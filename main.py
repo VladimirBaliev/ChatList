@@ -30,7 +30,7 @@ try:
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QTextEdit, QPushButton, QLabel, QTableWidget, QTableWidgetItem,
         QCheckBox, QComboBox, QSplitter, QMenuBar, QStatusBar, QMessageBox,
-        QHeaderView, QGroupBox
+        QHeaderView, QGroupBox, QDialog, QTextBrowser, QFileDialog
     )
     from PyQt6.QtCore import Qt, QThread, pyqtSignal
     from PyQt6.QtGui import QAction
@@ -41,7 +41,7 @@ except ImportError:
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QTextEdit, QPushButton, QLabel, QTableWidget, QTableWidgetItem,
         QCheckBox, QComboBox, QSplitter, QMenuBar, QStatusBar, QMessageBox,
-        QHeaderView, QGroupBox, QAction, QFileDialog
+        QHeaderView, QGroupBox, QAction, QFileDialog, QDialog, QTextBrowser
     )
     from PyQt5.QtCore import Qt, QThread, pyqtSignal
     PYQT_VERSION = 5
@@ -50,6 +50,7 @@ import db
 import models
 import network
 import export
+import markdown
 from windows import ManagePromptsWindow, ManageModelsWindow, ViewResultsWindow
 
 
@@ -168,16 +169,18 @@ class MainWindow(QMainWindow):
         
         # Таблица результатов
         self.results_table = QTableWidget()
-        self.results_table.setColumnCount(3)
-        self.results_table.setHorizontalHeaderLabels(["Модель", "Ответ", "Выбрано"])
+        self.results_table.setColumnCount(4)
+        self.results_table.setHorizontalHeaderLabels(["Модель", "Ответ", "Выбрано", "Действия"])
         if PYQT_VERSION == 6:
             self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
             self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
             self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+            self.results_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         else:
             self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
             self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
             self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+            self.results_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.results_table.setAlternatingRowColors(True)
         results_layout.addWidget(self.results_table)
         
@@ -514,6 +517,11 @@ class MainWindow(QMainWindow):
             checkbox = QCheckBox()
             checkbox.setChecked(result['success'])  # Автоматически выбираем успешные ответы
             self.results_table.setCellWidget(row, 2, checkbox)
+            
+            # Кнопка "Открыть" для просмотра ответа в markdown
+            open_btn = QPushButton("Открыть")
+            open_btn.clicked.connect(lambda checked, r=result, rt=response_text: self.open_response_markdown(r, rt))
+            self.results_table.setCellWidget(row, 3, open_btn)
         
         self.results_table.resizeColumnsToContents()
         self.save_results_btn.setEnabled(True)
@@ -628,6 +636,11 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Не удалось экспортировать результаты: {str(e)}")
     
+    def open_response_markdown(self, result, response_text):
+        """Открывает ответ нейросети в окне с форматированным markdown."""
+        dialog = MarkdownViewDialog(self, result, response_text)
+        dialog.exec()
+    
     def show_about(self):
         """Показывает информацию о программе."""
         QMessageBox.about(self, "О программе ChatList",
@@ -635,6 +648,162 @@ class MainWindow(QMainWindow):
                         "Версия: 1.0.0\n"
                         "Позволяет отправлять один промт в несколько нейросетей\n"
                         "и сравнивать их ответы.")
+
+
+class MarkdownViewDialog(QDialog):
+    """Диалог для просмотра ответа в форматированном markdown."""
+    
+    def __init__(self, parent=None, result=None, response_text=""):
+        super().__init__(parent)
+        self.result = result
+        self.response_text = response_text
+        self.setWindowTitle(f"Ответ: {result.get('model_name', 'Неизвестная модель')}" if result else "Ответ нейросети")
+        self.setGeometry(100, 100, 900, 700)
+        self.init_ui()
+    
+    def init_ui(self):
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+        
+        # Заголовок с информацией о модели
+        if self.result:
+            info_label = QLabel(f"<b>Модель:</b> {self.result.get('model_name', 'Неизвестная модель')}")
+            layout.addWidget(info_label)
+        
+        # QTextBrowser для отображения HTML (конвертированного из markdown)
+        self.browser = QTextBrowser()
+        self.browser.setOpenExternalLinks(True)
+        layout.addWidget(self.browser)
+        
+        # Кнопки
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+        
+        # Кнопка копирования
+        copy_btn = QPushButton("Копировать текст")
+        copy_btn.clicked.connect(self.copy_text)
+        buttons_layout.addWidget(copy_btn)
+        
+        # Кнопка закрытия
+        close_btn = QPushButton("Закрыть")
+        close_btn.clicked.connect(self.accept)
+        buttons_layout.addWidget(close_btn)
+        
+        layout.addLayout(buttons_layout)
+        
+        # Конвертируем markdown в HTML и отображаем
+        self.render_markdown()
+    
+    def render_markdown(self):
+        """Конвертирует markdown в HTML и отображает в браузере."""
+        try:
+            # Конвертируем markdown в HTML
+            html_content = markdown.markdown(
+                self.response_text,
+                extensions=['fenced_code', 'tables', 'nl2br', 'sane_lists']
+            )
+            
+            # Добавляем стили для лучшего отображения
+            styled_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <style>
+                    body {{
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                        font-size: 14px;
+                        line-height: 1.6;
+                        color: #333;
+                        padding: 20px;
+                        max-width: 100%;
+                        margin: 0 auto;
+                    }}
+                    code {{
+                        background-color: #f4f4f4;
+                        padding: 2px 6px;
+                        border-radius: 3px;
+                        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                        font-size: 13px;
+                    }}
+                    pre {{
+                        background-color: #f4f4f4;
+                        padding: 12px;
+                        border-radius: 5px;
+                        overflow-x: auto;
+                        border-left: 4px solid #2196F3;
+                    }}
+                    pre code {{
+                        background-color: transparent;
+                        padding: 0;
+                    }}
+                    h1, h2, h3, h4, h5, h6 {{
+                        margin-top: 24px;
+                        margin-bottom: 16px;
+                        font-weight: 600;
+                        line-height: 1.25;
+                    }}
+                    h1 {{ font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: 10px; }}
+                    h2 {{ font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 8px; }}
+                    h3 {{ font-size: 1.25em; }}
+                    p {{ margin-bottom: 16px; }}
+                    ul, ol {{
+                        margin-bottom: 16px;
+                        padding-left: 30px;
+                    }}
+                    li {{ margin-bottom: 4px; }}
+                    table {{
+                        border-collapse: collapse;
+                        width: 100%;
+                        margin-bottom: 16px;
+                    }}
+                    th, td {{
+                        border: 1px solid #dfe2e5;
+                        padding: 8px 12px;
+                    }}
+                    th {{
+                        background-color: #f6f8fa;
+                        font-weight: 600;
+                    }}
+                    blockquote {{
+                        margin: 0;
+                        padding: 0 16px;
+                        color: #6a737d;
+                        border-left: 4px solid #dfe2e5;
+                    }}
+                    a {{
+                        color: #0366d6;
+                        text-decoration: none;
+                    }}
+                    a:hover {{
+                        text-decoration: underline;
+                    }}
+                    hr {{
+                        border: none;
+                        border-top: 1px solid #eaecef;
+                        margin: 24px 0;
+                    }}
+                </style>
+            </head>
+            <body>
+                {html_content}
+            </body>
+            </html>
+            """
+            
+            self.browser.setHtml(styled_html)
+        except Exception as e:
+            # Если произошла ошибка при конвертации, показываем обычный текст
+            error_message = f"Ошибка при форматировании markdown: {str(e)}\n\nИсходный текст:\n\n{self.response_text}"
+            self.browser.setPlainText(error_message)
+    
+    def copy_text(self):
+        """Копирует исходный текст в буфер обмена."""
+        app = QApplication.instance()
+        if app:
+            clipboard = app.clipboard()
+            clipboard.setText(self.response_text)
+            QMessageBox.information(self, "Успех", "Текст скопирован в буфер обмена")
 
 
 def main():
