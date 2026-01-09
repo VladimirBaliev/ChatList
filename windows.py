@@ -385,6 +385,8 @@ class EditModelDialog(QDialog):
         self.name_input = QLineEdit()
         if self.model:
             self.name_input.setText(self.model['name'])
+        else:
+            self.name_input.setPlaceholderText("Например: mistralai/devstral-2512 или qwen/qwen3-coder")
         layout.addWidget(self.name_input)
         
         layout.addWidget(QLabel("API URL:"))
@@ -392,7 +394,8 @@ class EditModelDialog(QDialog):
         if self.model:
             self.url_input.setText(self.model['api_url'])
         else:
-            self.url_input.setPlaceholderText("https://api.openai.com/v1/chat/completions")
+            self.url_input.setPlaceholderText("https://openrouter.ai/api/v1/chat/completions")
+            self.url_input.setText("https://openrouter.ai/api/v1/chat/completions")
         layout.addWidget(self.url_input)
         
         layout.addWidget(QLabel("API ID (имя переменной окружения):"))
@@ -400,18 +403,28 @@ class EditModelDialog(QDialog):
         if self.model:
             self.api_id_input.setText(self.model['api_id'])
         else:
-            self.api_id_input.setPlaceholderText("OPENAI_API_KEY")
+            self.api_id_input.setPlaceholderText("OPENROUTER_API_KEY")
+            self.api_id_input.setText("OPENROUTER_API_KEY")
         layout.addWidget(self.api_id_input)
         
         layout.addWidget(QLabel("Тип модели:"))
         self.type_combo = QComboBox()
-        self.type_combo.addItems(['openai', 'deepseek', 'groq', 'openrouter', 'unknown'])
+        self.type_combo.addItems(['openrouter', 'openai', 'deepseek', 'groq', 'unknown'])
         if self.model:
             model_type = self.model.get('model_type', 'unknown')
             index = self.type_combo.findText(model_type)
             if index >= 0:
                 self.type_combo.setCurrentIndex(index)
+        else:
+            self.type_combo.setCurrentIndex(0)  # По умолчанию openrouter
+        self.type_combo.currentTextChanged.connect(self.on_type_changed)
         layout.addWidget(self.type_combo)
+        
+        # Подсказка для названия модели
+        hint_label = QLabel("Подсказка: Для OpenRouter используйте формат 'provider/model', например: 'mistralai/devstral-2512' или 'qwen/qwen3-coder'")
+        hint_label.setWordWrap(True)
+        hint_label.setStyleSheet("color: #666; font-size: 10pt;")
+        layout.addWidget(hint_label)
         
         self.active_checkbox = QCheckBox("Активна")
         if self.model:
@@ -429,6 +442,22 @@ class EditModelDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         buttons_layout.addWidget(cancel_btn)
         layout.addLayout(buttons_layout)
+    
+    def on_type_changed(self, model_type):
+        """Обновляет значения по умолчанию при изменении типа модели."""
+        if not self.model:  # Только для новых моделей
+            if model_type == 'openrouter':
+                self.url_input.setText("https://openrouter.ai/api/v1/chat/completions")
+                self.api_id_input.setText("OPENROUTER_API_KEY")
+            elif model_type == 'openai':
+                self.url_input.setText("https://api.openai.com/v1/chat/completions")
+                self.api_id_input.setText("OPENAI_API_KEY")
+            elif model_type == 'deepseek':
+                self.url_input.setText("https://api.deepseek.com/v1/chat/completions")
+                self.api_id_input.setText("DEEPSEEK_API_KEY")
+            elif model_type == 'groq':
+                self.url_input.setText("https://api.groq.com/openai/v1/chat/completions")
+                self.api_id_input.setText("GROQ_API_KEY")
     
     def save(self):
         name = self.name_input.text().strip()
