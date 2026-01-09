@@ -381,7 +381,18 @@ class MainWindow(QMainWindow):
         """Возвращает список выбранных моделей с их API-ключами."""
         selected_models = []
         all_models = models.ModelManager.get_all_models()
-        missing_keys = []
+        
+        # Проверяем наличие OPENROUTER_API_KEY один раз
+        openrouter_key = os.getenv('OPENROUTER_API_KEY')
+        if not openrouter_key:
+            QMessageBox.warning(
+                self,
+                "Предупреждение",
+                "OPENROUTER_API_KEY не найден в файле .env.\n\n"
+                "Все модели используют OpenRouter, поэтому необходим ключ OPENROUTER_API_KEY.\n"
+                "Добавьте его в файл .env для работы с моделями."
+            )
+            return []
         
         for row in range(self.models_table.rowCount()):
             checkbox = self.models_table.cellWidget(row, 0)
@@ -389,26 +400,12 @@ class MainWindow(QMainWindow):
                 model = all_models[row]
                 model_with_key = models.ModelManager.get_model_with_key(model['id'])
                 if model_with_key:
-                    # Проверяем наличие API-ключа
-                    if not model_with_key.get('api_key'):
-                        # Определяем, какой ключ нужен
-                        model_type = model.get('model_type', '').lower()
-                        if model_type == 'openrouter':
-                            missing_keys.append(f"{model['name']} (нужен OPENROUTER_API_KEY)")
-                        else:
-                            missing_keys.append(f"{model['name']} (переменная: {model['api_id']})")
-                    else:
-                        selected_models.append(model_with_key)
-        
-        # Предупреждаем о моделях без API-ключей
-        if missing_keys:
-            QMessageBox.warning(
-                self, 
-                "Предупреждение", 
-                f"Следующие модели не имеют API-ключей в .env файле:\n" + 
-                "\n".join(missing_keys) + 
-                "\n\nЭти модели будут пропущены при отправке запросов."
-            )
+                    # Принудительно используем OpenRouter для всех моделей
+                    model_with_key['api_key'] = openrouter_key
+                    model_with_key['api_url'] = 'https://openrouter.ai/api/v1/chat/completions'
+                    model_with_key['model_type'] = 'openrouter'
+                    
+                    selected_models.append(model_with_key)
         
         return selected_models
     
