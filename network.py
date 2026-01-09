@@ -40,7 +40,8 @@ def send_request_to_openai(model_data: Dict, prompt: str, timeout: int = 30) -> 
     api_url = model_data.get('api_url')
     
     if not api_key:
-        raise APIError("API-ключ не найден")
+        api_id = model_data.get('api_id', 'N/A')
+        raise APIError(f"API-ключ не найден. Проверьте переменную окружения '{api_id}' в файле .env")
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -117,7 +118,8 @@ def send_request_to_deepseek(model_data: Dict, prompt: str, timeout: int = 30) -
     api_url = model_data.get('api_url')
     
     if not api_key:
-        raise APIError("API-ключ не найден")
+        api_id = model_data.get('api_id', 'N/A')
+        raise APIError(f"API-ключ не найден. Проверьте переменную окружения '{api_id}' в файле .env")
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -183,7 +185,8 @@ def send_request_to_groq(model_data: Dict, prompt: str, timeout: int = 30) -> Di
     api_url = model_data.get('api_url')
     
     if not api_key:
-        raise APIError("API-ключ не найден")
+        api_id = model_data.get('api_id', 'N/A')
+        raise APIError(f"API-ключ не найден. Проверьте переменную окружения '{api_id}' в файле .env")
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -196,6 +199,82 @@ def send_request_to_groq(model_data: Dict, prompt: str, timeout: int = 30) -> Di
         model_name = "llama-3-8b-8192"
     elif 'mixtral' in model_data.get('name', '').lower():
         model_name = "mixtral-8x7b-32768"
+    
+    payload = {
+        "model": model_name,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.7
+    }
+    
+    start_time = time.time()
+    
+    try:
+        response = requests.post(api_url, json=payload, headers=headers, timeout=timeout)
+        response.raise_for_status()
+        
+        response_time = time.time() - start_time
+        data = response.json()
+        
+        if 'choices' in data and len(data['choices']) > 0:
+            response_text = data['choices'][0]['message']['content']
+        else:
+            raise APIError("Неожиданный формат ответа от API")
+        
+        tokens_used = None
+        if 'usage' in data:
+            tokens_used = data['usage'].get('total_tokens')
+        
+        logger.info(f"Запрос к {model_data.get('name')} выполнен за {response_time:.2f}с")
+        
+        return {
+            'response': response_text,
+            'tokens_used': tokens_used,
+            'response_time': response_time
+        }
+        
+    except requests.exceptions.Timeout:
+        raise APIError(f"Таймаут запроса к {model_data.get('name')}")
+    except requests.exceptions.RequestException as e:
+        raise APIError(f"Ошибка запроса к {model_data.get('name')}: {str(e)}")
+
+
+def send_request_to_openrouter(model_data: Dict, prompt: str, timeout: int = 30) -> Dict:
+    """
+    Отправляет запрос к OpenRouter API.
+    
+    Args:
+        model_data: Словарь с данными модели (должен содержать api_key, api_url, name)
+        prompt: Текст промта
+        timeout: Таймаут запроса в секундах
+        
+    Returns:
+        Словарь с ответом: {'response': str, 'tokens_used': int, 'response_time': float}
+        
+    Raises:
+        APIError: При ошибке запроса
+    """
+    api_key = model_data.get('api_key')
+    api_url = model_data.get('api_url', 'https://openrouter.ai/api/v1/chat/completions')
+    
+    if not api_key:
+        raise APIError("API-ключ не найден. Проверьте переменную окружения 'OPENROUTER_API_KEY' в файле .env")
+    
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/chatlist",
+        "X-Title": "ChatList"
+    }
+    
+    # Определяем модель из названия
+    # Название модели должно быть в формате provider/model (например, openai/gpt-4)
+    model_name = model_data.get('name', 'openai/gpt-4')
+    # Если в названии нет провайдера, пробуем определить по типу или используем openai/
+    if '/' not in model_name:
+        # Если название просто "GPT-4" или подобное, добавляем openai/
+        model_name = f"openai/{model_name}"
     
     payload = {
         "model": model_name,
@@ -265,6 +344,8 @@ def send_prompt_to_model(model_data: Dict, prompt: str, timeout: int = 30, max_r
                 return send_request_to_deepseek(model_data, prompt, timeout)
             elif model_type == 'groq':
                 return send_request_to_groq(model_data, prompt, timeout)
+            elif model_type == 'openrouter':
+                return send_request_to_openrouter(model_data, prompt, timeout)
             else:
                 # Пробуем OpenAI-совместимый формат
                 logger.warning(f"Неизвестный тип модели {model_type}, пробуем OpenAI-совместимый формат")

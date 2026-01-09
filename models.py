@@ -59,6 +59,28 @@ class ModelManager:
         return os.getenv(api_id)
     
     @staticmethod
+    def get_api_key_for_model(model_data: Dict) -> Optional[str]:
+        """
+        Получает API-ключ для модели.
+        Если модель использует OpenRouter, возвращает OPENROUTER_API_KEY.
+        
+        Args:
+            model_data: Словарь с данными модели
+            
+        Returns:
+            API-ключ или None, если ключ не найден
+        """
+        model_type = model_data.get('model_type', '').lower()
+        api_id = model_data.get('api_id', '')
+        
+        # Если модель использует OpenRouter, всегда используем OPENROUTER_API_KEY
+        if model_type == 'openrouter' or 'openrouter' in api_id.upper():
+            return os.getenv('OPENROUTER_API_KEY')
+        
+        # Иначе используем указанный api_id
+        return os.getenv(api_id) if api_id else None
+    
+    @staticmethod
     def validate_model(model_data: Dict) -> tuple[bool, str]:
         """
         Валидирует настройки модели.
@@ -79,9 +101,14 @@ class ModelManager:
             return False, "API ID (имя переменной окружения) не может быть пустым"
         
         # Проверяем, есть ли API-ключ в переменных окружения
-        api_key = ModelManager.get_api_key(model_data['api_id'])
+        # Для OpenRouter используем специальную функцию
+        api_key = ModelManager.get_api_key_for_model(model_data)
         if not api_key:
-            return False, f"API-ключ не найден в переменной окружения: {model_data['api_id']}"
+            model_type = model_data.get('model_type', '').lower()
+            if model_type == 'openrouter':
+                return False, f"API-ключ не найден в переменной окружения: OPENROUTER_API_KEY"
+            else:
+                return False, f"API-ключ не найден в переменной окружения: {model_data['api_id']}"
         
         # Валидация URL
         api_url = model_data['api_url']
@@ -149,6 +176,7 @@ class ModelManager:
         """
         Получает модель с API-ключом (для использования в запросах).
         API-ключ добавляется в словарь как 'api_key'.
+        Для моделей через OpenRouter использует OPENROUTER_API_KEY.
         
         Returns:
             Словарь с данными модели и API-ключом, или None если модель не найдена
@@ -158,7 +186,8 @@ class ModelManager:
             return None
         
         model_dict = dict(model)
-        api_key = ModelManager.get_api_key(model['api_id'])
+        # Используем специальную функцию для получения ключа
+        api_key = ModelManager.get_api_key_for_model(model)
         model_dict['api_key'] = api_key
         
         return model_dict
@@ -167,6 +196,7 @@ class ModelManager:
     def get_active_models_with_keys() -> List[Dict]:
         """
         Получает все активные модели с их API-ключами.
+        Для моделей через OpenRouter использует OPENROUTER_API_KEY.
         
         Returns:
             Список словарей с данными моделей и API-ключами
@@ -176,7 +206,8 @@ class ModelManager:
         
         for model in models:
             model_dict = dict(model)
-            api_key = ModelManager.get_api_key(model['api_id'])
+            # Используем специальную функцию для получения ключа
+            api_key = ModelManager.get_api_key_for_model(model)
             model_dict['api_key'] = api_key
             result.append(model_dict)
         
@@ -193,7 +224,7 @@ def get_model_type_from_url(api_url: str) -> str:
         api_url: URL API
         
     Returns:
-        Тип модели ('openai', 'deepseek', 'groq', 'unknown')
+        Тип модели ('openai', 'deepseek', 'groq', 'openrouter', 'unknown')
     """
     api_url_lower = api_url.lower()
     
@@ -203,6 +234,8 @@ def get_model_type_from_url(api_url: str) -> str:
         return 'deepseek'
     elif 'groq.com' in api_url_lower:
         return 'groq'
+    elif 'openrouter.ai' in api_url_lower or 'openrouter.com' in api_url_lower:
+        return 'openrouter'
     else:
         return 'unknown'
 

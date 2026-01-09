@@ -112,11 +112,12 @@ def _add_initial_data(cursor: sqlite3.Cursor, conn: sqlite3.Connection) -> None:
     
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # Добавляем примеры моделей
+    # Добавляем примеры моделей (все через OpenRouter)
     initial_models = [
-        ("GPT-4", "https://api.openai.com/v1/chat/completions", "OPENAI_API_KEY", 1, "openai", now),
-        ("DeepSeek Chat", "https://api.deepseek.com/v1/chat/completions", "DEEPSEEK_API_KEY", 1, "deepseek", now),
-        ("Groq Llama 3", "https://api.groq.com/openai/v1/chat/completions", "GROQ_API_KEY", 1, "groq", now),
+        ("openai/gpt-4", "https://openrouter.ai/api/v1/chat/completions", "OPENROUTER_API_KEY", 1, "openrouter", now),
+        ("anthropic/claude-3-opus", "https://openrouter.ai/api/v1/chat/completions", "OPENROUTER_API_KEY", 1, "openrouter", now),
+        ("google/gemini-pro", "https://openrouter.ai/api/v1/chat/completions", "OPENROUTER_API_KEY", 1, "openrouter", now),
+        ("meta-llama/llama-3-70b-instruct", "https://openrouter.ai/api/v1/chat/completions", "OPENROUTER_API_KEY", 1, "openrouter", now),
     ]
     
     cursor.executemany("""

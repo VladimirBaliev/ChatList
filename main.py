@@ -41,7 +41,7 @@ except ImportError:
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QTextEdit, QPushButton, QLabel, QTableWidget, QTableWidgetItem,
         QCheckBox, QComboBox, QSplitter, QMenuBar, QStatusBar, QMessageBox,
-        QHeaderView, QGroupBox, QAction
+        QHeaderView, QGroupBox, QAction, QFileDialog
     )
     from PyQt5.QtCore import Qt, QThread, pyqtSignal
     PYQT_VERSION = 5
@@ -49,6 +49,8 @@ except ImportError:
 import db
 import models
 import network
+import export
+from windows import ManagePromptsWindow, ManageModelsWindow, ViewResultsWindow
 
 
 class RequestThread(QThread):
@@ -122,6 +124,15 @@ class MainWindow(QMainWindow):
         self.prompt_input.setPlaceholderText("Введите ваш промт здесь...")
         self.prompt_input.setMaximumHeight(150)
         prompt_layout.addWidget(self.prompt_input)
+        
+        # Поле для тегов
+        tags_layout = QHBoxLayout()
+        tags_layout.addWidget(QLabel("Теги (через запятую):"))
+        self.tags_input = QTextEdit()
+        self.tags_input.setPlaceholderText("например: наука, физика, обучение")
+        self.tags_input.setMaximumHeight(40)
+        tags_layout.addWidget(self.tags_input)
+        prompt_layout.addLayout(tags_layout)
         
         # Кнопки для работы с промтом
         prompt_buttons_layout = QHBoxLayout()
@@ -240,6 +251,16 @@ class MainWindow(QMainWindow):
         
         settings_menu.addSeparator()
         
+        export_md_action = QAction("Экспорт результатов (Markdown)", self)
+        export_md_action.triggered.connect(self.export_results_markdown)
+        settings_menu.addAction(export_md_action)
+        
+        export_json_action = QAction("Экспорт результатов (JSON)", self)
+        export_json_action.triggered.connect(self.export_results_json)
+        settings_menu.addAction(export_json_action)
+        
+        settings_menu.addSeparator()
+        
         app_settings_action = QAction("Настройки приложения", self)
         app_settings_action.triggered.connect(self.show_app_settings)
         settings_menu.addAction(app_settings_action)
@@ -314,11 +335,16 @@ class MainWindow(QMainWindow):
                 prompt = db.get_prompt(prompt_id)
                 if prompt:
                     self.prompt_input.setPlainText(prompt['prompt'])
+                    if prompt.get('tags'):
+                        self.tags_input.setPlainText(prompt['tags'])
+                    else:
+                        self.tags_input.clear()
                     self.current_prompt_id = prompt_id
             except Exception as e:
                 QMessageBox.warning(self, "Ошибка", f"Не удалось загрузить промт: {str(e)}")
         else:
             self.current_prompt_id = None
+            self.tags_input.clear()
     
     def save_prompt(self):
         """Сохраняет текущий промт в БД."""
@@ -327,15 +353,27 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Предупреждение", "Промт не может быть пустым")
             return
         
+        tags_text = self.tags_input.toPlainText().strip()
+        tags = tags_text if tags_text else None
+        
         try:
-            prompt_id = db.create_prompt(prompt_text)
-            self.status_bar.showMessage("Промт сохранен", 3000)
+            if self.current_prompt_id:
+                # Обновляем существующий промт
+                db.update_prompt(self.current_prompt_id, prompt_text=prompt_text, tags=tags)
+                self.status_bar.showMessage("Промт обновлен", 3000)
+            else:
+                # Создаем новый промт
+                prompt_id = db.create_prompt(prompt_text, tags)
+                self.current_prompt_id = prompt_id
+                self.status_bar.showMessage("Промт сохранен", 3000)
+            
             self.load_saved_prompts()
-            # Выбираем только что сохраненный промт
-            for i in range(self.saved_prompts_combo.count()):
-                if self.saved_prompts_combo.itemData(i) == prompt_id:
-                    self.saved_prompts_combo.setCurrentIndex(i)
-                    break
+            # Выбираем текущий промт
+            if self.current_prompt_id:
+                for i in range(self.saved_prompts_combo.count()):
+                    if self.saved_prompts_combo.itemData(i) == self.current_prompt_id:
+                        self.saved_prompts_combo.setCurrentIndex(i)
+                        break
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить промт: {str(e)}")
     
@@ -343,6 +381,7 @@ class MainWindow(QMainWindow):
         """Возвращает список выбранных моделей с их API-ключами."""
         selected_models = []
         all_models = models.ModelManager.get_all_models()
+        missing_keys = []
         
         for row in range(self.models_table.rowCount()):
             checkbox = self.models_table.cellWidget(row, 0)
@@ -350,7 +389,26 @@ class MainWindow(QMainWindow):
                 model = all_models[row]
                 model_with_key = models.ModelManager.get_model_with_key(model['id'])
                 if model_with_key:
-                    selected_models.append(model_with_key)
+                    # Проверяем наличие API-ключа
+                    if not model_with_key.get('api_key'):
+                        # Определяем, какой ключ нужен
+                        model_type = model.get('model_type', '').lower()
+                        if model_type == 'openrouter':
+                            missing_keys.append(f"{model['name']} (нужен OPENROUTER_API_KEY)")
+                        else:
+                            missing_keys.append(f"{model['name']} (переменная: {model['api_id']})")
+                    else:
+                        selected_models.append(model_with_key)
+        
+        # Предупреждаем о моделях без API-ключей
+        if missing_keys:
+            QMessageBox.warning(
+                self, 
+                "Предупреждение", 
+                f"Следующие модели не имеют API-ключей в .env файле:\n" + 
+                "\n".join(missing_keys) + 
+                "\n\nЭти модели будут пропущены при отправке запросов."
+            )
         
         return selected_models
     
@@ -470,29 +528,68 @@ class MainWindow(QMainWindow):
     def new_prompt(self):
         """Создает новый промт."""
         self.prompt_input.clear()
+        self.tags_input.clear()
         self.saved_prompts_combo.setCurrentIndex(0)
         self.current_prompt_id = None
         self.clear_results()
     
     def show_manage_models(self):
-        """Показывает окно управления моделями (заглушка)."""
-        QMessageBox.information(self, "Управление моделями", 
-                              "Функция будет реализована в следующих этапах")
+        """Показывает окно управления моделями."""
+        window = ManageModelsWindow(self)
+        window.exec()
+        self.load_models()  # Обновляем список моделей после закрытия окна
     
     def show_manage_prompts(self):
-        """Показывает окно управления промтами (заглушка)."""
-        QMessageBox.information(self, "Управление промтами", 
-                              "Функция будет реализована в следующих этапах")
+        """Показывает окно управления промтами."""
+        window = ManagePromptsWindow(self)
+        window.exec()
+        self.load_saved_prompts()  # Обновляем список промтов после закрытия окна
     
     def show_saved_results(self):
-        """Показывает окно просмотра сохраненных результатов (заглушка)."""
-        QMessageBox.information(self, "Сохраненные результаты", 
-                              "Функция будет реализована в следующих этапах")
+        """Показывает окно просмотра сохраненных результатов."""
+        window = ViewResultsWindow(self)
+        window.exec()
     
     def show_app_settings(self):
         """Показывает окно настроек приложения (заглушка)."""
         QMessageBox.information(self, "Настройки", 
                               "Функция будет реализована в следующих этапах")
+    
+    def export_results_markdown(self):
+        """Экспортирует сохраненные результаты в Markdown."""
+        try:
+            results = db.get_all_results()
+            if not results:
+                QMessageBox.information(self, "Информация", "Нет сохраненных результатов для экспорта")
+                return
+            
+            filename, _ = QFileDialog.getSaveFileName(
+                self, "Сохранить как Markdown", "results.md", "Markdown Files (*.md);;All Files (*)"
+            )
+            
+            if filename:
+                export.export_results_to_markdown(results, filename)
+                QMessageBox.information(self, "Успех", f"Результаты экспортированы в {filename}")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось экспортировать результаты: {str(e)}")
+    
+    def export_results_json(self):
+        """Экспортирует сохраненные результаты в JSON."""
+        try:
+            results = db.get_all_results()
+            if not results:
+                QMessageBox.information(self, "Информация", "Нет сохраненных результатов для экспорта")
+                return
+            
+            filename, _ = QFileDialog.getSaveFileName(
+                self, "Сохранить как JSON", "results.json", "JSON Files (*.json);;All Files (*)"
+            )
+            
+            if filename:
+                export.export_results_to_json(results, filename)
+                QMessageBox.information(self, "Успех", f"Результаты экспортированы в {filename}")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось экспортировать результаты: {str(e)}")
     
     def show_about(self):
         """Показывает информацию о программе."""
