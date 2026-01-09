@@ -120,6 +120,8 @@ def _add_initial_data(cursor: sqlite3.Cursor, conn: sqlite3.Connection) -> None:
         ("google/gemini-pro", "https://openrouter.ai/api/v1/chat/completions", "OPENROUTER_API_KEY", 1, "openrouter", now),
         ("meta-llama/llama-3.3-70b-instruct", "https://openrouter.ai/api/v1/chat/completions", "OPENROUTER_API_KEY", 1, "openrouter", now),
         ("deepseek/deepseek-chat-v3.1", "https://openrouter.ai/api/v1/chat/completions", "OPENROUTER_API_KEY", 1, "openrouter", now),
+        ("mistralai/devstral-2512", "https://openrouter.ai/api/v1/chat/completions", "OPENROUTER_API_KEY", 1, "openrouter", now),
+        ("qwen/qwen3-coder", "https://openrouter.ai/api/v1/chat/completions", "OPENROUTER_API_KEY", 1, "openrouter", now),
     ]
     
     cursor.executemany("""

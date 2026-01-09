@@ -288,6 +288,10 @@ def send_request_to_openrouter(model_data: Dict, prompt: str, timeout: int = 30)
         'llama 3': 'meta-llama/llama-3.3-70b-instruct',
         'claude': 'anthropic/claude-3-opus',
         'gemini': 'google/gemini-pro',
+        'mistral devstral': 'mistralai/devstral-2512',
+        'devstral': 'mistralai/devstral-2512',
+        'qwen coder': 'qwen/qwen3-coder',
+        'qwen3 coder': 'qwen/qwen3-coder',
         'openai/gpt-4': 'openai/gpt-4',
         'anthropic/claude-3-opus': 'anthropic/claude-3-opus',
         'google/gemini-pro': 'google/gemini-pro',
@@ -297,6 +301,8 @@ def send_request_to_openrouter(model_data: Dict, prompt: str, timeout: int = 30)
         'groq/llama-3.1-70b-versatile': 'meta-llama/llama-3.3-70b-instruct',
         'groq/llama-3.3-70b-versatile': 'meta-llama/llama-3.3-70b-instruct',
         'deepseek/deepseek-chat': 'deepseek/deepseek-chat-v3.1',
+        'mistralai/devstral-2512': 'mistralai/devstral-2512',
+        'qwen/qwen3-coder': 'qwen/qwen3-coder',
     }
     
     # Нормализуем название модели
@@ -332,6 +338,12 @@ def send_request_to_openrouter(model_data: Dict, prompt: str, timeout: int = 30)
             model_name = 'anthropic/claude-3-opus'
         elif 'gemini' in model_name_lower or 'google' in model_name_lower:
             model_name = 'google/gemini-pro'
+        elif 'mistral' in model_name_lower or 'devstral' in model_name_lower:
+            model_name = 'mistralai/devstral-2512'
+        elif 'qwen' in model_name_lower and 'coder' in model_name_lower:
+            model_name = 'qwen/qwen3-coder'
+        elif 'qwen' in model_name_lower:
+            model_name = 'qwen/qwen3-coder'
         elif 'gpt' in model_name_lower or 'openai' in model_name_lower:
             if '3.5' in model_name_lower or 'turbo' in model_name_lower:
                 model_name = 'openai/gpt-3.5-turbo'
