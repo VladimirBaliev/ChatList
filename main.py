@@ -457,18 +457,58 @@ class MainWindow(QMainWindow):
                 model_item.setFlags(model_item.flags() & ~Qt.ItemIsEditable)
             self.results_table.setItem(row, 0, model_item)
             
-            # Ответ
+            # Ответ - используем QTextEdit для многострочного отображения
             if result['success']:
                 response_text = result['response']
             else:
                 response_text = f"Ошибка: {result.get('error', 'Неизвестная ошибка')}"
             
-            response_item = QTableWidgetItem(response_text)
+            # Создаем QTextEdit для отображения многострочного текста
+            response_widget = QTextEdit()
+            response_widget.setPlainText(response_text)
+            response_widget.setReadOnly(True)
+            
+            # Убираем рамку вокруг текста для более чистого вида в таблице
             if PYQT_VERSION == 6:
-                response_item.setFlags(response_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                response_widget.setFrameShape(QTextEdit.Shape.NoFrame)
+                response_widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+                response_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             else:
-                response_item.setFlags(response_item.flags() & ~Qt.ItemIsEditable)
-            self.results_table.setItem(row, 1, response_item)
+                response_widget.setFrameShape(QTextEdit.NoFrame)
+                response_widget.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+                response_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            
+            # QTextEdit по умолчанию поддерживает перенос текста по словам
+            # Явно включаем перенос, если нужно
+            try:
+                if PYQT_VERSION == 6:
+                    from PyQt6.QtGui import QTextOption
+                    response_widget.setWordWrapMode(QTextOption.WrapMode.WordWrap)
+                else:
+                    from PyQt5.QtGui import QTextOption
+                    response_widget.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+            except:
+                pass  # Используем настройки по умолчанию
+            
+            # Устанавливаем стиль для более чистого вида
+            response_widget.setStyleSheet("background-color: transparent; border: none; padding: 2px;")
+            
+            # Рассчитываем высоту на основе количества строк текста
+            lines = response_text.count('\n') + 1
+            # Оцениваем количество строк с учетом переноса (примерно 80 символов на строку)
+            text_length = len(response_text)
+            estimated_lines = max(lines, (text_length // 80) + 1) if text_length > 0 else 1
+            
+            min_height = 60  # Минимальная высота
+            max_height = 500  # Максимальная высота
+            # Оцениваем высоту: примерно 22-24 пикселя на строку
+            estimated_height = min(max(min_height, estimated_lines * 23), max_height)
+            
+            response_widget.setMinimumHeight(min_height)
+            response_widget.setMaximumHeight(max_height)
+            
+            self.results_table.setCellWidget(row, 1, response_widget)
+            self.results_table.setRowHeight(row, estimated_height)
             
             # Чекбокс для выбора
             checkbox = QCheckBox()
