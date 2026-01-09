@@ -271,10 +271,58 @@ def send_request_to_openrouter(model_data: Dict, prompt: str, timeout: int = 30)
     # Определяем модель из названия
     # Название модели должно быть в формате provider/model (например, openai/gpt-4)
     model_name = model_data.get('name', 'openai/gpt-4')
-    # Если в названии нет провайдера, пробуем определить по типу или используем openai/
-    if '/' not in model_name:
-        # Если название просто "GPT-4" или подобное, добавляем openai/
-        model_name = f"openai/{model_name}"
+    
+    # Маппинг старых названий на правильные имена моделей OpenRouter
+    # Актуальные названия моделей можно проверить на https://openrouter.ai/models
+    model_name_mapping = {
+        'gpt-4': 'openai/gpt-4',
+        'gpt4': 'openai/gpt-4',
+        'gpt-3.5': 'openai/gpt-3.5-turbo',
+        'gpt-3.5-turbo': 'openai/gpt-3.5-turbo',
+        'deepseek chat': 'deepseek/deepseek-chat',
+        'deepseek': 'deepseek/deepseek-chat',
+        'groq llama 3': 'groq/llama-3-70b-versatile',
+        'llama 3': 'meta-llama/llama-3-70b-instruct',
+        'claude': 'anthropic/claude-3-opus',
+        'gemini': 'google/gemini-pro',
+        'openai/gpt-4': 'openai/gpt-4',
+        'anthropic/claude-3-opus': 'anthropic/claude-3-opus',
+        'google/gemini-pro': 'google/gemini-pro',
+        'meta-llama/llama-3-70b-instruct': 'meta-llama/llama-3-70b-instruct',
+    }
+    
+    # Нормализуем название модели
+    model_name_lower = model_name.lower().strip()
+    
+    # Сначала проверяем точное совпадение
+    if model_name_lower in model_name_mapping:
+        model_name = model_name_mapping[model_name_lower]
+    # Если в названии уже есть формат provider/model, оставляем как есть
+    elif '/' in model_name:
+        # Проверяем, что это валидный формат OpenRouter
+        pass
+    # Если название не в формате provider/model, пробуем определить по содержимому
+    else:
+        # Автоматическое определение провайдера по названию
+        if 'deepseek' in model_name_lower:
+            # Правильное название для DeepSeek в OpenRouter
+            model_name = 'deepseek/deepseek-chat'
+        elif 'groq' in model_name_lower or ('llama' in model_name_lower and 'groq' in model_name_lower):
+            model_name = 'groq/llama-3-70b-versatile'
+        elif 'llama' in model_name_lower:
+            model_name = 'meta-llama/llama-3-70b-instruct'
+        elif 'claude' in model_name_lower or 'anthropic' in model_name_lower:
+            model_name = 'anthropic/claude-3-opus'
+        elif 'gemini' in model_name_lower or 'google' in model_name_lower:
+            model_name = 'google/gemini-pro'
+        elif 'gpt' in model_name_lower or 'openai' in model_name_lower:
+            if '3.5' in model_name_lower or 'turbo' in model_name_lower:
+                model_name = 'openai/gpt-3.5-turbo'
+            else:
+                model_name = 'openai/gpt-4'
+        else:
+            # По умолчанию используем GPT-4
+            model_name = 'openai/gpt-4'
     
     payload = {
         "model": model_name,
@@ -288,6 +336,21 @@ def send_request_to_openrouter(model_data: Dict, prompt: str, timeout: int = 30)
     
     try:
         response = requests.post(api_url, json=payload, headers=headers, timeout=timeout)
+        
+        # Обрабатываем ошибки более подробно для OpenRouter
+        if response.status_code == 400:
+            try:
+                error_data = response.json()
+                error_message = error_data.get('error', {}).get('message', 'Bad Request')
+                # Показываем более подробную информацию об ошибке
+                detailed_error = f"Ошибка 400: {error_message}. Используемая модель: {model_name}. Оригинальное название: {model_data.get('name')}"
+                logger.error(f"Ошибка запроса к {model_data.get('name')}: {detailed_error}")
+                raise APIError(detailed_error)
+            except (ValueError, KeyError, TypeError):
+                # Если не удалось распарсить JSON с ошибкой
+                error_text = response.text[:200] if hasattr(response, 'text') and response.text else 'Unknown error'
+                raise APIError(f"Ошибка 400 Bad Request. Используемая модель: {model_name}. Оригинальное название: {model_data.get('name')}. Ответ сервера: {error_text}")
+        
         response.raise_for_status()
         
         response_time = time.time() - start_time
@@ -302,7 +365,7 @@ def send_request_to_openrouter(model_data: Dict, prompt: str, timeout: int = 30)
         if 'usage' in data:
             tokens_used = data['usage'].get('total_tokens')
         
-        logger.info(f"Запрос к {model_data.get('name')} выполнен за {response_time:.2f}с")
+        logger.info(f"Запрос к {model_data.get('name')} (модель OpenRouter: {model_name}) выполнен за {response_time:.2f}с")
         
         return {
             'response': response_text,
@@ -310,6 +373,8 @@ def send_request_to_openrouter(model_data: Dict, prompt: str, timeout: int = 30)
             'response_time': response_time
         }
         
+    except APIError:
+        raise
     except requests.exceptions.Timeout:
         raise APIError(f"Таймаут запроса к {model_data.get('name')}")
     except requests.exceptions.RequestException as e:
