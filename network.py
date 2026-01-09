@@ -274,21 +274,29 @@ def send_request_to_openrouter(model_data: Dict, prompt: str, timeout: int = 30)
     
     # Маппинг старых названий на правильные имена моделей OpenRouter
     # Актуальные названия моделей можно проверить на https://openrouter.ai/models
+    # Примечание: OpenRouter не поддерживает модели Groq напрямую, используем Meta Llama
     model_name_mapping = {
         'gpt-4': 'openai/gpt-4',
         'gpt4': 'openai/gpt-4',
         'gpt-3.5': 'openai/gpt-3.5-turbo',
         'gpt-3.5-turbo': 'openai/gpt-3.5-turbo',
-        'deepseek chat': 'deepseek/deepseek-chat',
-        'deepseek': 'deepseek/deepseek-chat',
-        'groq llama 3': 'groq/llama-3-70b-versatile',
-        'llama 3': 'meta-llama/llama-3-70b-instruct',
+        'deepseek chat': 'deepseek/deepseek-chat-v3.1',
+        'deepseek': 'deepseek/deepseek-chat-v3.1',
+        'groq llama 3': 'meta-llama/llama-3.3-70b-instruct',
+        'groq llama': 'meta-llama/llama-3.3-70b-instruct',
+        'groq': 'meta-llama/llama-3.3-70b-instruct',
+        'llama 3': 'meta-llama/llama-3.3-70b-instruct',
         'claude': 'anthropic/claude-3-opus',
         'gemini': 'google/gemini-pro',
         'openai/gpt-4': 'openai/gpt-4',
         'anthropic/claude-3-opus': 'anthropic/claude-3-opus',
         'google/gemini-pro': 'google/gemini-pro',
-        'meta-llama/llama-3-70b-instruct': 'meta-llama/llama-3-70b-instruct',
+        'meta-llama/llama-3-70b-instruct': 'meta-llama/llama-3.3-70b-instruct',
+        'meta-llama/llama-3.1-70b-instruct': 'meta-llama/llama-3.3-70b-instruct',
+        'groq/llama-3-70b-versatile': 'meta-llama/llama-3.3-70b-instruct',
+        'groq/llama-3.1-70b-versatile': 'meta-llama/llama-3.3-70b-instruct',
+        'groq/llama-3.3-70b-versatile': 'meta-llama/llama-3.3-70b-instruct',
+        'deepseek/deepseek-chat': 'deepseek/deepseek-chat-v3.1',
     }
     
     # Нормализуем название модели
@@ -297,20 +305,29 @@ def send_request_to_openrouter(model_data: Dict, prompt: str, timeout: int = 30)
     # Сначала проверяем точное совпадение
     if model_name_lower in model_name_mapping:
         model_name = model_name_mapping[model_name_lower]
-    # Если в названии уже есть формат provider/model, оставляем как есть
+    # Если в названии уже есть формат provider/model, проверяем, не является ли оно устаревшим
     elif '/' in model_name:
-        # Проверяем, что это валидный формат OpenRouter
-        pass
+        # Проверяем устаревшие названия моделей
+        if model_name_lower.startswith('groq/'):
+            # OpenRouter не поддерживает Groq напрямую, используем Meta Llama
+            model_name = 'meta-llama/llama-3.3-70b-instruct'
+        elif 'meta-llama/llama-3' in model_name_lower and '3.3' not in model_name_lower:
+            # Обновляем старые версии Llama 3 на актуальную 3.3
+            model_name = 'meta-llama/llama-3.3-70b-instruct'
+        elif model_name_lower == 'deepseek/deepseek-chat':
+            # Обновляем старое название DeepSeek на актуальное
+            model_name = 'deepseek/deepseek-chat-v3.1'
     # Если название не в формате provider/model, пробуем определить по содержимому
     else:
         # Автоматическое определение провайдера по названию
         if 'deepseek' in model_name_lower:
             # Правильное название для DeepSeek в OpenRouter
-            model_name = 'deepseek/deepseek-chat'
+            model_name = 'deepseek/deepseek-chat-v3.1'
         elif 'groq' in model_name_lower or ('llama' in model_name_lower and 'groq' in model_name_lower):
-            model_name = 'groq/llama-3-70b-versatile'
+            # OpenRouter не поддерживает Groq напрямую, используем Meta Llama 3.3
+            model_name = 'meta-llama/llama-3.3-70b-instruct'
         elif 'llama' in model_name_lower:
-            model_name = 'meta-llama/llama-3-70b-instruct'
+            model_name = 'meta-llama/llama-3.3-70b-instruct'
         elif 'claude' in model_name_lower or 'anthropic' in model_name_lower:
             model_name = 'anthropic/claude-3-opus'
         elif 'gemini' in model_name_lower or 'google' in model_name_lower:
