@@ -51,7 +51,7 @@ import models
 import network
 import export
 import markdown
-from windows import ManagePromptsWindow, ManageModelsWindow, ViewResultsWindow
+from windows import ManagePromptsWindow, ManageModelsWindow, ViewResultsWindow, PromptImproverDialog
 
 
 class RequestThread(QThread):
@@ -137,6 +137,12 @@ class MainWindow(QMainWindow):
         
         # Кнопки для работы с промтом
         prompt_buttons_layout = QHBoxLayout()
+        
+        self.improve_prompt_btn = QPushButton("Улучшить промт")
+        self.improve_prompt_btn.clicked.connect(self.show_improve_prompt_dialog)
+        self.improve_prompt_btn.setToolTip("Улучшить промт с помощью AI-ассистента")
+        prompt_buttons_layout.addWidget(self.improve_prompt_btn)
+        
         self.save_prompt_btn = QPushButton("Сохранить промт")
         self.save_prompt_btn.clicked.connect(self.save_prompt)
         prompt_buttons_layout.addWidget(self.save_prompt_btn)
@@ -640,6 +646,55 @@ class MainWindow(QMainWindow):
         """Открывает ответ нейросети в окне с форматированным markdown."""
         dialog = MarkdownViewDialog(self, result, response_text)
         dialog.exec()
+    
+    def show_improve_prompt_dialog(self):
+        """Показывает диалог улучшения промта."""
+        prompt_text = self.prompt_input.toPlainText().strip()
+        
+        if not prompt_text:
+            reply = QMessageBox.question(
+                self,
+                "Пустое поле",
+                "Поле ввода промта пустое. Вы хотите ввести промт сейчас или открыть диалог улучшения?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+            )
+            
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+            elif reply == QMessageBox.StandardButton.No:
+                # Открываем диалог с пустым промтом (пользователь может ввести его там)
+                prompt_text = ""
+        
+        # Проверяем наличие активных моделей
+        try:
+            active_models = models.ModelManager.get_active_models()
+            if not active_models:
+                QMessageBox.warning(
+                    self,
+                    "Предупреждение",
+                    "Нет активных моделей. Добавьте хотя бы одну модель в настройках "
+                    "перед использованием функции улучшения промтов."
+                )
+                return
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось проверить активные модели: {str(e)}")
+            return
+        
+        # Открываем диалог улучшения промта
+        dialog = PromptImproverDialog(self, prompt_text)
+        
+        # Проверяем результат диалога (совместимость с PyQt5 и PyQt6)
+        if PYQT_VERSION == 6:
+            result = dialog.exec() == QDialog.DialogCode.Accepted
+        else:
+            result = dialog.exec() == QDialog.Accepted
+        
+        if result:
+            # Если пользователь выбрал вариант для подстановки
+            selected_prompt = dialog.get_selected_prompt()
+            if selected_prompt:
+                self.prompt_input.setPlainText(selected_prompt)
+                self.status_bar.showMessage("Улучшенный промт подставлен в поле ввода", 3000)
     
     def show_about(self):
         """Показывает информацию о программе."""

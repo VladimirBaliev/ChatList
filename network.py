@@ -410,6 +410,147 @@ def send_request_to_openrouter(model_data: Dict, prompt: str, timeout: int = 30)
         raise APIError(f"Ошибка запроса к {model_data.get('name')}: {str(e)}")
 
 
+def send_prompt_with_system_to_model(model_data: Dict, system_prompt: str, user_prompt: str, 
+                                      timeout: int = 30, max_retries: int = 2) -> Dict:
+    """
+    Отправляет промт с системным сообщением в конкретную модель.
+    
+    Args:
+        model_data: Словарь с данными модели (должен содержать model_type, api_key, api_url, name)
+        system_prompt: Системный промт (инструкции для AI)
+        user_prompt: Пользовательский промт (основной запрос)
+        timeout: Таймаут запроса в секундах
+        max_retries: Максимальное количество попыток при ошибке
+        
+    Returns:
+        Словарь с ответом: {'response': str, 'tokens_used': int, 'response_time': float}
+        
+    Raises:
+        APIError: При ошибке запроса после всех попыток
+    """
+    model_type = model_data.get('model_type', 'openai').lower()
+    api_key = model_data.get('api_key')
+    api_url = model_data.get('api_url', 'https://openrouter.ai/api/v1/chat/completions')
+    
+    if not api_key:
+        raise APIError(f"API-ключ не найден для модели {model_data.get('name')}")
+    
+    # Для OpenRouter и других OpenAI-совместимых API
+    if model_type == 'openrouter' or 'openrouter' in api_url.lower():
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/chatlist",
+            "X-Title": "ChatList"
+        }
+        
+        # Определяем модель из названия
+        model_name = model_data.get('name', 'openai/gpt-4')
+        model_name_mapping = {
+            'gpt-4': 'openai/gpt-4',
+            'gpt4': 'openai/gpt-4',
+            'gpt-3.5': 'openai/gpt-3.5-turbo',
+            'gpt-3.5-turbo': 'openai/gpt-3.5-turbo',
+            'deepseek chat': 'deepseek/deepseek-chat-v3.1',
+            'deepseek': 'deepseek/deepseek-chat-v3.1',
+            'groq llama 3': 'meta-llama/llama-3.3-70b-instruct',
+            'groq llama': 'meta-llama/llama-3.3-70b-instruct',
+            'groq': 'meta-llama/llama-3.3-70b-instruct',
+            'llama 3': 'meta-llama/llama-3.3-70b-instruct',
+            'claude': 'anthropic/claude-3-opus',
+            'gemini': 'google/gemini-pro',
+        }
+        
+        model_name_lower = model_name.lower().strip()
+        if model_name_lower in model_name_mapping:
+            model_name = model_name_mapping[model_name_lower]
+        elif '/' not in model_name:
+            # Автоматическое определение провайдера
+            if 'deepseek' in model_name_lower:
+                model_name = 'deepseek/deepseek-chat-v3.1'
+            elif 'llama' in model_name_lower:
+                model_name = 'meta-llama/llama-3.3-70b-instruct'
+            elif 'claude' in model_name_lower or 'anthropic' in model_name_lower:
+                model_name = 'anthropic/claude-3-opus'
+            elif 'gemini' in model_name_lower or 'google' in model_name_lower:
+                model_name = 'google/gemini-pro'
+            elif 'gpt' in model_name_lower:
+                model_name = 'openai/gpt-4'
+            else:
+                model_name = 'openai/gpt-4'
+        
+        payload = {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": 0.7
+        }
+        
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                start_time = time.time()
+                response = requests.post(api_url, json=payload, headers=headers, timeout=timeout)
+                
+                if response.status_code == 400:
+                    try:
+                        error_data = response.json()
+                        error_message = error_data.get('error', {}).get('message', 'Bad Request')
+                        raise APIError(f"Ошибка 400: {error_message}. Используемая модель: {model_name}")
+                    except (ValueError, KeyError, TypeError):
+                        error_text = response.text[:200] if hasattr(response, 'text') and response.text else 'Unknown error'
+                        raise APIError(f"Ошибка 400 Bad Request. Модель: {model_name}. Ответ: {error_text}")
+                
+                response.raise_for_status()
+                response_time = time.time() - start_time
+                data = response.json()
+                
+                if 'choices' in data and len(data['choices']) > 0:
+                    response_text = data['choices'][0]['message']['content']
+                else:
+                    raise APIError("Неожиданный формат ответа от API")
+                
+                tokens_used = data.get('usage', {}).get('total_tokens') if 'usage' in data else None
+                
+                logger.info(f"Запрос к {model_data.get('name')} (модель: {model_name}) выполнен за {response_time:.2f}с")
+                
+                return {
+                    'response': response_text,
+                    'tokens_used': tokens_used,
+                    'response_time': response_time
+                }
+                
+            except APIError as e:
+                last_error = e
+                if attempt < max_retries:
+                    wait_time = (attempt + 1) * 2
+                    logger.warning(f"Попытка {attempt + 1} не удалась, повтор через {wait_time}с: {str(e)}")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Все попытки исчерпаны для {model_data.get('name')}: {str(e)}")
+            except requests.exceptions.Timeout:
+                last_error = APIError(f"Таймаут запроса к {model_data.get('name')}")
+                if attempt < max_retries:
+                    time.sleep((attempt + 1) * 2)
+            except requests.exceptions.RequestException as e:
+                last_error = APIError(f"Ошибка запроса к {model_data.get('name')}: {str(e)}")
+                if attempt < max_retries:
+                    time.sleep((attempt + 1) * 2)
+        
+        if last_error:
+            raise last_error
+        else:
+            raise APIError(f"Не удалось отправить запрос к {model_data.get('name')}")
+    
+    else:
+        # Для других типов моделей используем стандартный метод (без системного промта)
+        # Объединяем системный и пользовательский промты
+        combined_prompt = f"{system_prompt}\n\n---\n\n{user_prompt}"
+        return send_prompt_to_model(model_data, combined_prompt, timeout, max_retries)
+
+
 def send_prompt_to_model(model_data: Dict, prompt: str, timeout: int = 30, max_retries: int = 2) -> Dict:
     """
     Отправляет промт в конкретную модель с обработкой ошибок и retry-логикой.
