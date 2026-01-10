@@ -40,7 +40,8 @@ class DatabaseViewer:
         self.db_label = ttk.Label(top_frame, text="Не выбрана", foreground="gray")
         self.db_label.pack(side=tk.LEFT, padx=(0, 10))
         
-        ttk.Button(top_frame, text="Выбрать файл", command=self.select_database).pack(side=tk.LEFT)
+        ttk.Button(top_frame, text="Выбрать файл", command=self.select_database).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(top_frame, text="Закрыть", command=self.close_database).pack(side=tk.LEFT)
         
         # Основной контейнер
         main_container = ttk.Frame(self.root)
@@ -155,6 +156,31 @@ class DatabaseViewer:
                 
         except sqlite3.Error as e:
             messagebox.showerror("Ошибка", f"Не удалось загрузить базу данных:\n{e}")
+            
+    def close_database(self):
+        """Закрытие подключения к базе данных и очистка интерфейса."""
+        if self.connection:
+            try:
+                self.connection.close()
+            except:
+                pass
+            self.connection = None
+            
+        self.db_path = None
+        self.current_table = None
+        self.current_page = 1
+        
+        # Очистка списка таблиц
+        self.table_listbox.delete(0, tk.END)
+        
+        # Очистка отображения данных
+        self.tree.delete(*self.tree.get_children())
+        self.tree['columns'] = []
+        
+        # Обновление меток
+        self.db_label.config(text="Не выбрана", foreground="gray")
+        self.table_title.config(text="Выберите таблицу")
+        self.page_info.config(text="")
             
     def on_table_select(self, event):
         """Обработка выбора таблицы из списка."""
