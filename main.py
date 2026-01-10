@@ -33,7 +33,7 @@ try:
         QHeaderView, QGroupBox, QDialog, QTextBrowser, QFileDialog
     )
     from PyQt6.QtCore import Qt, QThread, pyqtSignal
-    from PyQt6.QtGui import QAction
+    from PyQt6.QtGui import QAction, QIcon
     PYQT_VERSION = 6
 except ImportError:
     # Fallback на PyQt5 если PyQt6 не доступен
@@ -44,6 +44,7 @@ except ImportError:
         QHeaderView, QGroupBox, QAction, QFileDialog, QDialog, QTextBrowser
     )
     from PyQt5.QtCore import Qt, QThread, pyqtSignal
+    from PyQt5.QtGui import QIcon
     PYQT_VERSION = 5
 
 import db
@@ -90,6 +91,15 @@ class MainWindow(QMainWindow):
         """Инициализирует пользовательский интерфейс."""
         self.setWindowTitle("ChatList - Сравнение ответов нейросетей")
         self.setGeometry(100, 100, 1200, 800)
+        
+        # Устанавливаем иконку приложения
+        icon_path = os.path.join(application_path, "app.ico")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+        else:
+            # Если иконка не найдена, пытаемся найти в текущей директории
+            if os.path.exists("app.ico"):
+                self.setWindowIcon(QIcon("app.ico"))
         
         # Создаем центральный виджет
         central_widget = QWidget()
@@ -864,6 +874,13 @@ class MarkdownViewDialog(QDialog):
 def main():
     """Главная функция приложения."""
     app = QApplication(sys.argv)
+    
+    # Устанавливаем иконку приложения для всех окон
+    icon_path = os.path.join(application_path, "app.ico")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+    elif os.path.exists("app.ico"):
+        app.setWindowIcon(QIcon("app.ico"))
     
     # Убеждаемся, что приложение видимо
     if not app.instance():
