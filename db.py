@@ -132,6 +132,7 @@ def _add_initial_data(cursor: sqlite3.Cursor, conn: sqlite3.Connection) -> None:
     # Добавляем начальные настройки
     initial_settings = [
         ("theme", "light", "Тема интерфейса (light/dark)", now),
+        ("font_size", "10", "Размер шрифта панелей в пунктах", now),
         ("api_timeout", "30", "Таймаут запросов к API в секундах", now),
         ("default_export_format", "markdown", "Формат экспорта по умолчанию (markdown/json)", now),
     ]

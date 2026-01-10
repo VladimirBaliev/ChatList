@@ -930,3 +930,161 @@ class PromptImproverDialog(QDialog):
     def get_selected_prompt(self):
         """Возвращает выбранный промт для подстановки."""
         return self.selected_prompt
+
+
+class SettingsWindow(QDialog):
+    """Окно настроек приложения."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent_window = parent
+        self.setWindowTitle("Настройки приложения")
+        self.setGeometry(100, 100, 500, 300)
+        self.init_ui()
+        self.load_settings()
+    
+    def init_ui(self):
+        """Инициализирует пользовательский интерфейс."""
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+        
+        # Группа "Внешний вид"
+        appearance_group = QGroupBox("Внешний вид")
+        appearance_layout = QVBoxLayout()
+        appearance_group.setLayout(appearance_layout)
+        
+        # Выбор темы
+        theme_layout = QHBoxLayout()
+        theme_layout.addWidget(QLabel("Тема интерфейса:"))
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItem("Светлая", "light")
+        self.theme_combo.addItem("Тёмная", "dark")
+        self.theme_combo.currentIndexChanged.connect(self.on_theme_changed)
+        theme_layout.addWidget(self.theme_combo)
+        theme_layout.addStretch()
+        appearance_layout.addLayout(theme_layout)
+        
+        # Выбор размера шрифта
+        font_size_layout = QHBoxLayout()
+        font_size_layout.addWidget(QLabel("Размер шрифта панелей:"))
+        self.font_size_combo = QComboBox()
+        # Добавляем варианты размеров шрифта (в пунктах)
+        font_sizes = ["8", "9", "10", "11", "12", "13", "14", "16", "18", "20"]
+        for size in font_sizes:
+            self.font_size_combo.addItem(f"{size} pt", size)
+        self.font_size_combo.currentIndexChanged.connect(self.on_font_size_changed)
+        font_size_layout.addWidget(self.font_size_combo)
+        font_size_layout.addStretch()
+        appearance_layout.addLayout(font_size_layout)
+        
+        # Информация о применении настроек
+        info_label = QLabel("Настройки применяются сразу после нажатия кнопки 'Применить' или 'ОК'")
+        if PYQT_VERSION == 6:
+            from PyQt6.QtGui import QFont
+            info_font = QFont()
+            info_font.setItalic(True)
+            info_font.setPointSize(9)
+            info_label.setFont(info_font)
+            info_label.setStyleSheet("color: gray;")
+        else:
+            from PyQt5.QtGui import QFont
+            info_font = QFont()
+            info_font.setItalic(True)
+            info_font.setPointSize(9)
+            info_label.setFont(info_font)
+            info_label.setStyleSheet("color: gray;")
+        appearance_layout.addWidget(info_label)
+        
+        layout.addWidget(appearance_group)
+        
+        layout.addStretch()
+        
+        # Кнопки
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+        
+        # Кнопка "Применить"
+        self.apply_btn = QPushButton("Применить")
+        self.apply_btn.clicked.connect(self.apply_settings)
+        buttons_layout.addWidget(self.apply_btn)
+        
+        # Кнопка "ОК"
+        ok_btn = QPushButton("ОК")
+        ok_btn.clicked.connect(self.apply_and_close)
+        ok_btn.setDefault(True)
+        buttons_layout.addWidget(ok_btn)
+        
+        # Кнопка "Отмена"
+        cancel_btn = QPushButton("Отмена")
+        cancel_btn.clicked.connect(self.reject)
+        buttons_layout.addWidget(cancel_btn)
+        
+        layout.addLayout(buttons_layout)
+    
+    def load_settings(self):
+        """Загружает настройки из БД."""
+        try:
+            # Загружаем тему
+            theme = db.get_setting("theme")
+            if theme:
+                # Находим индекс темы
+                for i in range(self.theme_combo.count()):
+                    if self.theme_combo.itemData(i) == theme:
+                        self.theme_combo.setCurrentIndex(i)
+                        break
+            else:
+                # По умолчанию светлая тема
+                self.theme_combo.setCurrentIndex(0)
+            
+            # Загружаем размер шрифта
+            font_size = db.get_setting("font_size")
+            if font_size:
+                # Находим индекс размера шрифта
+                for i in range(self.font_size_combo.count()):
+                    if self.font_size_combo.itemData(i) == font_size:
+                        self.font_size_combo.setCurrentIndex(i)
+                        break
+            else:
+                # По умолчанию 10 pt
+                default_font_size = "10"
+                for i in range(self.font_size_combo.count()):
+                    if self.font_size_combo.itemData(i) == default_font_size:
+                        self.font_size_combo.setCurrentIndex(i)
+                        break
+        except Exception as e:
+            QMessageBox.warning(self, "Ошибка", f"Не удалось загрузить настройки: {str(e)}")
+    
+    def on_theme_changed(self, index):
+        """Обработчик изменения темы."""
+        # Можно реализовать предпросмотр темы в будущем
+        pass
+    
+    def on_font_size_changed(self, index):
+        """Обработчик изменения размера шрифта."""
+        # Можно реализовать предпросмотр размера шрифта в будущем
+        pass
+    
+    def apply_settings(self):
+        """Применяет настройки (сохраняет в БД и применяет к приложению)."""
+        try:
+            # Сохраняем тему
+            theme = self.theme_combo.currentData()
+            db.set_setting("theme", theme, "Тема интерфейса (light/dark)")
+            
+            # Сохраняем размер шрифта
+            font_size = self.font_size_combo.currentData()
+            db.set_setting("font_size", font_size, "Размер шрифта панелей в пунктах")
+            
+            # Применяем настройки к текущему окну
+            if self.parent_window:
+                self.parent_window.apply_theme(theme)
+                self.parent_window.apply_font_size(int(font_size))
+            
+            QMessageBox.information(self, "Успех", "Настройки применены успешно!")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось применить настройки: {str(e)}")
+    
+    def apply_and_close(self):
+        """Применяет настройки и закрывает окно."""
+        self.apply_settings()
+        self.accept()

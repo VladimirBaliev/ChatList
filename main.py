@@ -52,7 +52,7 @@ import models
 import network
 import export
 import markdown
-from windows import ManagePromptsWindow, ManageModelsWindow, ViewResultsWindow, PromptImproverDialog
+from windows import ManagePromptsWindow, ManageModelsWindow, ViewResultsWindow, PromptImproverDialog, SettingsWindow
 
 
 class RequestThread(QThread):
@@ -84,6 +84,7 @@ class MainWindow(QMainWindow):
         
         self.init_ui()
         self.init_database()
+        self.load_settings()  # Загружаем настройки перед загрузкой остальных элементов
         self.load_saved_prompts()
         self.load_models()
     
@@ -611,10 +612,188 @@ class MainWindow(QMainWindow):
         window = ViewResultsWindow(self)
         window.exec()
     
+    def load_settings(self):
+        """Загружает настройки из БД и применяет их."""
+        try:
+            # Загружаем тему
+            theme = db.get_setting("theme") or "light"  # По умолчанию светлая
+            self.apply_theme(theme)
+            
+            # Загружаем размер шрифта
+            font_size = db.get_setting("font_size") or "10"  # По умолчанию 10 pt
+            self.apply_font_size(int(font_size))
+        except Exception as e:
+            # Если не удалось загрузить настройки, используем значения по умолчанию
+            self.status_bar.showMessage(f"Не удалось загрузить настройки: {str(e)}", 5000)
+    
+    def apply_theme(self, theme: str):
+        """
+        Применяет тему к приложению.
+        
+        Args:
+            theme: 'light' или 'dark'
+        """
+        if theme == "dark":
+            # Тёмная тема
+            dark_stylesheet = """
+            QMainWindow, QWidget {
+                background-color: #2b2b2b;
+                color: #ffffff;
+            }
+            QGroupBox {
+                border: 1px solid #555555;
+                border-radius: 5px;
+                margin-top: 10px;
+                font-weight: bold;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+            QPushButton {
+                background-color: #3d3d3d;
+                color: #ffffff;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #4d4d4d;
+            }
+            QPushButton:pressed {
+                background-color: #2d2d2d;
+            }
+            QTextEdit, QLineEdit {
+                background-color: #3d3d3d;
+                color: #ffffff;
+                border: 1px solid #555555;
+                border-radius: 3px;
+            }
+            QComboBox {
+                background-color: #3d3d3d;
+                color: #ffffff;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                padding: 3px;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox::down-arrow {
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid #ffffff;
+            }
+            QTableWidget {
+                background-color: #2b2b2b;
+                color: #ffffff;
+                gridline-color: #555555;
+            }
+            QTableWidget::item {
+                background-color: #2b2b2b;
+                color: #ffffff;
+            }
+            QTableWidget::item:selected {
+                background-color: #555555;
+            }
+            QHeaderView::section {
+                background-color: #3d3d3d;
+                color: #ffffff;
+                padding: 5px;
+                border: 1px solid #555555;
+            }
+            QCheckBox {
+                color: #ffffff;
+            }
+            QMenuBar {
+                background-color: #2b2b2b;
+                color: #ffffff;
+            }
+            QMenuBar::item:selected {
+                background-color: #3d3d3d;
+            }
+            QMenu {
+                background-color: #2b2b2b;
+                color: #ffffff;
+            }
+            QMenu::item:selected {
+                background-color: #3d3d3d;
+            }
+            QStatusBar {
+                background-color: #2b2b2b;
+                color: #ffffff;
+            }
+            QTabWidget::pane {
+                border: 1px solid #555555;
+                background-color: #2b2b2b;
+            }
+            QTabBar::tab {
+                background-color: #3d3d3d;
+                color: #ffffff;
+                padding: 5px 10px;
+            }
+            QTabBar::tab:selected {
+                background-color: #555555;
+            }
+            QDialog {
+                background-color: #2b2b2b;
+                color: #ffffff;
+            }
+            """
+            self.setStyleSheet(dark_stylesheet)
+        else:
+            # Светлая тема (по умолчанию, стили Qt)
+            self.setStyleSheet("")
+    
+    def apply_font_size(self, font_size: int):
+        """
+        Применяет размер шрифта к панелям приложения.
+        
+        Args:
+            font_size: Размер шрифта в пунктах
+        """
+        try:
+            if PYQT_VERSION == 6:
+                from PyQt6.QtGui import QFont
+            else:
+                from PyQt5.QtGui import QFont
+            
+            font = QFont()
+            font.setPointSize(font_size)
+            
+            # Применяем шрифт ко всем виджетам
+            self.setFont(font)
+            
+            # Также применяем к основным элементам интерфейса
+            self.prompt_input.setFont(font)
+            self.tags_input.setFont(font)
+            
+            # Применяем к таблицам (но немного меньше, так как там много текста)
+            table_font = QFont()
+            table_font.setPointSize(max(font_size - 1, 8))  # Минимум 8pt
+            
+            self.models_table.setFont(table_font)
+            self.results_table.setFont(table_font)
+            
+        except Exception as e:
+            self.status_bar.showMessage(f"Не удалось применить размер шрифта: {str(e)}", 5000)
+    
     def show_app_settings(self):
-        """Показывает окно настроек приложения (заглушка)."""
-        QMessageBox.information(self, "Настройки", 
-                              "Функция будет реализована в следующих этапах")
+        """Показывает окно настроек приложения."""
+        window = SettingsWindow(self)
+        
+        # Проверяем результат диалога (совместимость с PyQt5 и PyQt6)
+        if PYQT_VERSION == 6:
+            result = window.exec() == QDialog.DialogCode.Accepted
+        else:
+            result = window.exec() == QDialog.Accepted
+        
+        # Настройки уже применены в окне настроек, просто перезагружаем для полноты
+        # (хотя они уже должны быть применены)
+        if result:
+            # Перезагружаем настройки на случай, если они были изменены
+            self.load_settings()
     
     def export_results_markdown(self):
         """Экспортирует сохраненные результаты в Markdown."""
@@ -708,11 +887,37 @@ class MainWindow(QMainWindow):
     
     def show_about(self):
         """Показывает информацию о программе."""
-        QMessageBox.about(self, "О программе ChatList",
-                        "ChatList - приложение для сравнения ответов нейросетей\n\n"
-                        "Версия: 1.0.0\n"
-                        "Позволяет отправлять один промт в несколько нейросетей\n"
-                        "и сравнивать их ответы.")
+        about_text = """
+        <h2>ChatList</h2>
+        <p><b>Версия:</b> 1.0.0</p>
+        <p><b>Описание:</b></p>
+        <p>ChatList — это приложение для сравнения ответов нейросетей.</p>
+        <p>Позволяет отправлять один промт в несколько нейросетей одновременно и сравнивать их ответы в удобной таблице.</p>
+        
+        <p><b>Основные возможности:</b></p>
+        <ul>
+            <li>Отправка промта в несколько моделей одновременно</li>
+            <li>Сравнение ответов в табличном виде</li>
+            <li>Сохранение выбранных результатов в базу данных</li>
+            <li>Управление промтами и моделями</li>
+            <li>AI-ассистент для улучшения промтов</li>
+            <li>Экспорт результатов в Markdown и JSON</li>
+            <li>Настройка темы и размера шрифта</li>
+        </ul>
+        
+        <p><b>Технологии:</b></p>
+        <ul>
+            <li>Python 3.11+</li>
+            <li>PyQt6 / PyQt5</li>
+            <li>SQLite</li>
+            <li>OpenRouter API</li>
+        </ul>
+        
+        <p><b>Автор:</b> ChatList Team</p>
+        <p><b>Лицензия:</b> См. файл LICENSE</p>
+        """
+        
+        QMessageBox.about(self, "О программе ChatList", about_text)
 
 
 class MarkdownViewDialog(QDialog):
