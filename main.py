@@ -4,16 +4,194 @@
 """
 import sys
 import os
+import traceback
+import time
+
+# Определяем путь к лог файлу СРАЗУ, используя несколько вариантов
+log_file = None
+application_path = None
+
+try:
+    if getattr(sys, 'frozen', False):
+        # Если программа запущена как exe
+        application_path = os.path.dirname(sys.executable)
+        # Для Program Files используем пользовательскую директорию для логов
+        if 'Program Files' in application_path:
+            import os
+            user_data_dir = os.path.join(os.environ.get('APPDATA', ''), 'ChatList')
+            try:
+                os.makedirs(user_data_dir, exist_ok=True)
+                log_file = os.path.join(user_data_dir, 'chatlist.log')
+            except:
+                # Если не удалось, используем временную директорию
+                import tempfile
+                log_file = os.path.join(tempfile.gettempdir(), 'chatlist.log')
+        else:
+            log_file = os.path.join(application_path, 'chatlist.log')
+    else:
+        # Если программа запущена как скрипт
+        application_path = os.path.dirname(os.path.abspath(__file__))
+        log_file = os.path.join(application_path, 'chatlist.log')
+except:
+    # Если не удалось определить путь, используем временную директорию
+    try:
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        log_file = os.path.join(temp_dir, 'chatlist.log')
+        application_path = temp_dir
+    except:
+        # Последний вариант - текущая директория
+        log_file = 'chatlist.log'
+        application_path = os.getcwd()
+
+def write_log(message):
+    """Записывает сообщение в лог файл с немедленным сохранением."""
+    global log_file
+    try:
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
+            f.flush()
+            try:
+                os.fsync(f.fileno())  # Принудительная запись на диск
+            except:
+                pass
+    except Exception as e:
+        # Если не удалось записать в файл, выводим в stderr
+        print(f"Не удалось записать в лог: {e}", file=sys.stderr)
+        print(f"Сообщение: {message}", file=sys.stderr)
+        print(f"Путь к лог файлу: {log_file}", file=sys.stderr)
+
+def log_error(message, exc_info=None):
+    """Записывает ошибку в лог файл."""
+    write_log(f"ERROR: {message}")
+    if exc_info:
+        try:
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(traceback.format_exc() + "\n")
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except:
+                    pass
+        except:
+            pass
+    traceback.print_exc()
+
+# Инициализируем лог файл СРАЗУ
+try:
+    with open(log_file, 'w', encoding='utf-8') as f:
+        f.write(f"=== Запуск ChatList ===\n")
+        f.write(f"Python версия: {sys.version}\n")
+        f.write(f"Путь к приложению: {application_path}\n")
+        f.write(f"Frozen: {getattr(sys, 'frozen', False)}\n")
+        f.write(f"Platform: {sys.platform}\n")
+        f.write(f"Путь к лог файлу: {log_file}\n")
+        f.flush()
+        try:
+            os.fsync(f.fileno())
+        except:
+            pass
+    write_log("Лог файл инициализирован")
+except Exception as e:
+    # Выводим в stderr и пытаемся создать в другом месте
+    print(f"Не удалось создать лог файл в {log_file}: {e}", file=sys.stderr)
+    try:
+        import tempfile
+        log_file = os.path.join(tempfile.gettempdir(), 'chatlist.log')
+        with open(log_file, 'w', encoding='utf-8') as f:
+            f.write(f"=== Запуск ChatList (временный лог) ===\n")
+            f.write(f"Оригинальный путь не доступен\n")
+            f.write(f"Python версия: {sys.version}\n")
+            f.flush()
+        print(f"Лог файл создан в: {log_file}", file=sys.stderr)
+    except:
+        print("Не удалось создать лог файл ни в одном месте!", file=sys.stderr)
 
 # Устанавливаем рабочую директорию на директорию скрипта
+write_log("Настройка путей...")
 if getattr(sys, 'frozen', False):
     # Если программа запущена как exe
     application_path = os.path.dirname(sys.executable)
+    write_log(f"Режим exe, путь: {application_path}")
+    # В режиме onedir DLL находятся в _internal/PyQt5/Qt5/bin
+    # Также пробуем корень _internal, куда мы копируем DLL
+    qt_bin_path = os.path.join(application_path, '_internal', 'PyQt5', 'Qt5', 'bin')
+    qt_internal_path = os.path.join(application_path, '_internal')
+    
+    write_log(f"Путь к DLL Qt (bin): {qt_bin_path}, существует: {os.path.exists(qt_bin_path)}")
+    write_log(f"Путь к _internal: {qt_internal_path}, существует: {os.path.exists(qt_internal_path)}")
+    
+    # Добавляем оба пути в PATH
+    paths_to_add = []
+    if os.path.exists(qt_bin_path):
+        paths_to_add.append(qt_bin_path)
+    if os.path.exists(qt_internal_path):
+        paths_to_add.append(qt_internal_path)
+    
+    if paths_to_add:
+        new_path = os.pathsep.join(paths_to_add) + os.pathsep + os.environ.get('PATH', '')
+        os.environ['PATH'] = new_path
+        write_log(f"PATH обновлен, добавлены пути: {paths_to_add}")
+        
+        # Проверяем наличие основных DLL Qt
+        import glob
+        for path in paths_to_add:
+            qt_core_dll = os.path.join(path, 'Qt5Core.dll')
+            if os.path.exists(qt_core_dll):
+                write_log(f"Найден Qt5Core.dll в: {qt_core_dll}")
+                # Проверяем размер файла
+                try:
+                    size = os.path.getsize(qt_core_dll)
+                    write_log(f"Размер Qt5Core.dll: {size} байт")
+                except:
+                    pass
+            else:
+                write_log(f"Qt5Core.dll НЕ найден в: {path}")
+                # Ищем все DLL Qt в этой папке
+                qt_dlls = glob.glob(os.path.join(path, 'Qt5*.dll'))
+                write_log(f"Найдено DLL Qt в {path}: {len(qt_dlls)} файлов")
+                if qt_dlls:
+                    write_log(f"Примеры: {[os.path.basename(d) for d in qt_dlls[:5]]}")
+        
+        # Также добавляем через AddDllDirectory для Windows
+        if sys.platform == 'win32':
+            try:
+                import ctypes
+                from ctypes import wintypes
+                kernel32 = ctypes.windll.kernel32
+                # Правильный способ вызова AddDllDirectoryW
+                AddDllDirectory = kernel32.AddDllDirectory
+                AddDllDirectory.argtypes = [wintypes.LPCWSTR]
+                AddDllDirectory.restype = wintypes.HANDLE
+                
+                for path in paths_to_add:
+                    handle = AddDllDirectory(path)
+                    if handle:
+                        write_log(f"AddDllDirectory успешно для {path}, handle: {handle}")
+                    else:
+                        error = ctypes.get_last_error()
+                        write_log(f"AddDllDirectory вернул NULL для {path}, ошибка: {error}")
+            except Exception as e:
+                write_log(f"Ошибка AddDllDirectory: {e}")
+                # Пробуем альтернативный способ
+                try:
+                    import ctypes
+                    kernel32 = ctypes.windll.kernel32
+                    for path in paths_to_add:
+                        result = kernel32.AddDllDirectoryW(path)
+                        write_log(f"AddDllDirectoryW (альтернативный способ) для {path}, результат: {result}")
+                except Exception as e2:
+                    write_log(f"Альтернативный способ тоже не сработал: {e2}")
 else:
     # Если программа запущена как скрипт
     application_path = os.path.dirname(os.path.abspath(__file__))
+    write_log(f"Режим скрипт, путь: {application_path}")
 
-os.chdir(application_path)
+try:
+    os.chdir(application_path)
+    write_log(f"Рабочая директория установлена: {os.getcwd()}")
+except Exception as e:
+    write_log(f"Ошибка установки рабочей директории: {e}")
 
 # Настраиваем путь к плагинам Qt для PyQt5
 try:
@@ -25,18 +203,8 @@ try:
 except:
     pass
 
+write_log("Попытка импорта PyQt5...")
 try:
-    from PyQt6.QtWidgets import (
-        QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-        QTextEdit, QPushButton, QLabel, QTableWidget, QTableWidgetItem,
-        QCheckBox, QComboBox, QSplitter, QMenuBar, QStatusBar, QMessageBox,
-        QHeaderView, QGroupBox, QDialog, QTextBrowser, QFileDialog
-    )
-    from PyQt6.QtCore import Qt, QThread, pyqtSignal
-    from PyQt6.QtGui import QAction, QIcon
-    PYQT_VERSION = 6
-except ImportError:
-    # Fallback на PyQt5 если PyQt6 не доступен
     from PyQt5.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QTextEdit, QPushButton, QLabel, QTableWidget, QTableWidgetItem,
@@ -46,12 +214,17 @@ except ImportError:
     from PyQt5.QtCore import Qt, QThread, pyqtSignal
     from PyQt5.QtGui import QIcon
     PYQT_VERSION = 5
+    write_log("PyQt5 успешно импортирован")
+except ImportError as e:
+    log_error(f"Ошибка импорта PyQt5: {e}", exc_info=True)
+    raise
 
 import db
 import models
 import network
 import export
 import markdown
+from version import __version__
 from windows import ManagePromptsWindow, ManageModelsWindow, ViewResultsWindow, PromptImproverDialog, SettingsWindow
 
 
@@ -111,7 +284,7 @@ class MainWindow(QMainWindow):
         central_widget.setLayout(main_layout)
         
         # Создаем разделитель для областей
-        if PYQT_VERSION == 6:
+        if PYQT_VERSION == 5:
             splitter = QSplitter(Qt.Orientation.Vertical)
         else:
             splitter = QSplitter(Qt.Vertical)
@@ -170,7 +343,7 @@ class MainWindow(QMainWindow):
         self.models_table = QTableWidget()
         self.models_table.setColumnCount(3)
         self.models_table.setHorizontalHeaderLabels(["Выбрать", "Название", "Тип"])
-        if PYQT_VERSION == 6:
+        if PYQT_VERSION == 5:
             self.models_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         else:
             self.models_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
@@ -188,7 +361,7 @@ class MainWindow(QMainWindow):
         self.results_table = QTableWidget()
         self.results_table.setColumnCount(4)
         self.results_table.setHorizontalHeaderLabels(["Модель", "Ответ", "Выбрано", "Действия"])
-        if PYQT_VERSION == 6:
+        if PYQT_VERSION == 5:
             self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
             self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
             self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
@@ -328,7 +501,7 @@ class MainWindow(QMainWindow):
                 
                 # Название модели
                 name_item = QTableWidgetItem(model['name'])
-                if PYQT_VERSION == 6:
+                if PYQT_VERSION == 5:
                     name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 else:
                     name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
@@ -337,7 +510,7 @@ class MainWindow(QMainWindow):
                 # Тип модели
                 model_type = model.get('model_type', 'unknown')
                 type_item = QTableWidgetItem(model_type)
-                if PYQT_VERSION == 6:
+                if PYQT_VERSION == 5:
                     type_item.setFlags(type_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 else:
                     type_item.setFlags(type_item.flags() & ~Qt.ItemIsEditable)
@@ -471,7 +644,7 @@ class MainWindow(QMainWindow):
         for row, result in enumerate(results):
             # Название модели
             model_item = QTableWidgetItem(result['model_name'])
-            if PYQT_VERSION == 6:
+            if PYQT_VERSION == 5:
                 model_item.setFlags(model_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             else:
                 model_item.setFlags(model_item.flags() & ~Qt.ItemIsEditable)
@@ -489,7 +662,7 @@ class MainWindow(QMainWindow):
             response_widget.setReadOnly(True)
             
             # Убираем рамку вокруг текста для более чистого вида в таблице
-            if PYQT_VERSION == 6:
+            if PYQT_VERSION == 5:
                 response_widget.setFrameShape(QTextEdit.Shape.NoFrame)
                 response_widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
                 response_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -501,8 +674,8 @@ class MainWindow(QMainWindow):
             # QTextEdit по умолчанию поддерживает перенос текста по словам
             # Явно включаем перенос, если нужно
             try:
-                if PYQT_VERSION == 6:
-                    from PyQt6.QtGui import QTextOption
+                if PYQT_VERSION == 5:
+                    from PyQt5.QtGui import QTextOption
                     response_widget.setWordWrapMode(QTextOption.WrapMode.WordWrap)
                 else:
                     from PyQt5.QtGui import QTextOption
@@ -754,8 +927,8 @@ class MainWindow(QMainWindow):
             font_size: Размер шрифта в пунктах
         """
         try:
-            if PYQT_VERSION == 6:
-                from PyQt6.QtGui import QFont
+            if PYQT_VERSION == 5:
+                from PyQt5.QtGui import QFont
             else:
                 from PyQt5.QtGui import QFont
             
@@ -784,7 +957,7 @@ class MainWindow(QMainWindow):
         window = SettingsWindow(self)
         
         # Проверяем результат диалога (совместимость с PyQt5 и PyQt6)
-        if PYQT_VERSION == 6:
+        if PYQT_VERSION == 5:
             result = window.exec() == QDialog.DialogCode.Accepted
         else:
             result = window.exec() == QDialog.Accepted
@@ -873,7 +1046,7 @@ class MainWindow(QMainWindow):
         dialog = PromptImproverDialog(self, prompt_text)
         
         # Проверяем результат диалога (совместимость с PyQt5 и PyQt6)
-        if PYQT_VERSION == 6:
+        if PYQT_VERSION == 5:
             result = dialog.exec() == QDialog.DialogCode.Accepted
         else:
             result = dialog.exec() == QDialog.Accepted
@@ -887,9 +1060,9 @@ class MainWindow(QMainWindow):
     
     def show_about(self):
         """Показывает информацию о программе."""
-        about_text = """
+        about_text = f"""
         <h2>ChatList</h2>
-        <p><b>Версия:</b> 1.0.0</p>
+        <p><b>Версия:</b> {__version__}</p>
         <p><b>Описание:</b></p>
         <p>ChatList — это приложение для сравнения ответов нейросетей.</p>
         <p>Позволяет отправлять один промт в несколько нейросетей одновременно и сравнивать их ответы в удобной таблице.</p>
@@ -908,7 +1081,7 @@ class MainWindow(QMainWindow):
         <p><b>Технологии:</b></p>
         <ul>
             <li>Python 3.11+</li>
-            <li>PyQt6 / PyQt5</li>
+            <li>PyQt5</li>
             <li>SQLite</li>
             <li>OpenRouter API</li>
         </ul>
@@ -1078,26 +1251,94 @@ class MarkdownViewDialog(QDialog):
 
 def main():
     """Главная функция приложения."""
-    app = QApplication(sys.argv)
+    import logging
+    import traceback
+
+    # Настраиваем логирование с выводом в файл и консоль
+    # Используем глобальный log_file, который уже настроен правильно (пользовательская директория)
+    # Если log_file не определен, используем пользовательскую директорию
+    if log_file is None or not log_file:
+        user_data_dir = os.path.join(os.environ.get('APPDATA', ''), 'ChatList')
+        try:
+            os.makedirs(user_data_dir, exist_ok=True)
+            main_log_file = os.path.join(user_data_dir, 'chatlist.log')
+        except:
+            import tempfile
+            main_log_file = os.path.join(tempfile.gettempdir(), 'chatlist.log')
+    else:
+        main_log_file = log_file
     
-    # Устанавливаем иконку приложения для всех окон
-    icon_path = os.path.join(application_path, "app.ico")
-    if os.path.exists(icon_path):
-        app.setWindowIcon(QIcon(icon_path))
-    elif os.path.exists("app.ico"):
-        app.setWindowIcon(QIcon("app.ico"))
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(main_log_file, encoding='utf-8'),
+            logging.StreamHandler(sys.stderr)
+        ]
+    )
+    logger = logging.getLogger(__name__)
     
-    # Убеждаемся, что приложение видимо
-    if not app.instance():
-        app.setQuitOnLastWindowClosed(True)
-    
-    window = MainWindow()
-    window.show()
-    window.raise_()  # Поднимаем окно на передний план
-    window.activateWindow()  # Активируем окно
-    
-    sys.exit(app.exec())
+    try:
+        logger.info(f"Запуск ChatList версии {__version__}")
+        logger.info(f"Путь к приложению: {application_path}")
+        logger.info(f"Python версия: {sys.version}")
+        
+        app = QApplication(sys.argv)
+        
+        # Устанавливаем иконку приложения для всех окон
+        icon_path = os.path.join(application_path, "app.ico")
+        if os.path.exists(icon_path):
+            app.setWindowIcon(QIcon(icon_path))
+        elif os.path.exists("app.ico"):
+            app.setWindowIcon(QIcon("app.ico"))
+        
+        # Убеждаемся, что приложение видимо
+        if not app.instance():
+            app.setQuitOnLastWindowClosed(True)
+        
+        window = MainWindow()
+        window.show()
+        window.raise_()  # Поднимаем окно на передний план
+        window.activateWindow()  # Активируем окно
+        
+        logger.info("Окно приложения создано и отображено")
+        sys.exit(app.exec())
+    except Exception as e:
+        error_msg = f"Критическая ошибка при запуске: {str(e)}\n{traceback.format_exc()}"
+        logger.error(error_msg)
+        print(error_msg, file=sys.stderr)
+        
+        # Показываем сообщение об ошибке, если возможно
+        try:
+            if 'app' in locals():
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.critical(None, "Ошибка запуска", error_msg)
+        except:
+            pass
+        
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        # Обработка исключений на самом верхнем уровне
+        try:
+            log_error(f"Необработанное исключение в main(): {e}", exc_info=True)
+        except:
+            # Если даже логирование не работает, выводим в stderr
+            traceback.print_exc(file=sys.stderr)
+        
+        print(f"\nКРИТИЧЕСКАЯ ОШИБКА: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        print(f"\nЛог файл: {log_file}", file=sys.stderr)
+        print("\nНажмите Enter для закрытия окна...", file=sys.stderr)
+        try:
+            input()
+        except:
+            try:
+                time.sleep(30)
+            except:
+                pass
+        sys.exit(1)

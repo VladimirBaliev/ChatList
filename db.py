@@ -13,7 +13,28 @@ DB_NAME = "chatlist.db"
 
 def get_db_path() -> str:
     """Возвращает путь к файлу базы данных."""
-    return DB_NAME
+    import sys
+    
+    # Если программа запущена как exe (frozen)
+    if getattr(sys, 'frozen', False):
+        application_path = os.path.dirname(sys.executable)
+        # Для Program Files используем пользовательскую директорию
+        if 'Program Files' in application_path:
+            user_data_dir = os.path.join(os.environ.get('APPDATA', ''), 'ChatList')
+            try:
+                os.makedirs(user_data_dir, exist_ok=True)
+                return os.path.join(user_data_dir, DB_NAME)
+            except:
+                # Если не удалось, используем временную директорию
+                import tempfile
+                return os.path.join(tempfile.gettempdir(), DB_NAME)
+        else:
+            # Если не Program Files, используем директорию приложения
+            return os.path.join(application_path, DB_NAME)
+    else:
+        # Если программа запущена как скрипт, используем директорию скрипта
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(script_dir, DB_NAME)
 
 
 def get_connection() -> sqlite3.Connection:
