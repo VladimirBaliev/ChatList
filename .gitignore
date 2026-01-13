@@ -53,3 +53,4 @@ logs/
 
 # PyInstaller
 *.spec
+!MinimalApp.spec
