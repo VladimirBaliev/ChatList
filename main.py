@@ -1228,20 +1228,28 @@ def main():
     else:
         main_log_file = log_file
     
+    # Настройка логирования только в файл (без консоли)
+    # Отключаем все существующие обработчики
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.WARNING,  # Только предупреждения и ошибки
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(main_log_file, encoding='utf-8')
             # Убран StreamHandler - логи только в файл, не в консоль
-        ]
+        ],
+        force=True  # Переопределяем существующие настройки
     )
+    
+    # Отключаем вывод в консоль для всех логгеров
+    root_logger = logging.getLogger()
+    root_logger.handlers = [logging.FileHandler(main_log_file, encoding='utf-8')]
+    root_logger.setLevel(logging.WARNING)
+    
     logger = logging.getLogger(__name__)
     
     try:
-        logger.info(f"Запуск ChatList версии {__version__}")
-        logger.info(f"Путь к приложению: {application_path}")
-        logger.info(f"Python версия: {sys.version}")
+        # Убраны информационные логи - они не нужны в релизной версии
+        # Логирование только ошибок и предупреждений в файл
         
         app = QApplication(sys.argv)
         
@@ -1261,7 +1269,6 @@ def main():
         window.raise_()  # Поднимаем окно на передний план
         window.activateWindow()  # Активируем окно
         
-        logger.info("Окно приложения создано и отображено")
         sys.exit(app.exec())
     except Exception as e:
         error_msg = f"Критическая ошибка при запуске: {str(e)}\n{traceback.format_exc()}"

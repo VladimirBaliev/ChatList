@@ -8,12 +8,12 @@ import logging
 from typing import Dict, Optional, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Настройка логирования (без вывода в консоль)
+# Используем NullHandler, чтобы не выводить логи в консоль
+# Логи будут записываться только через основной logger в main.py
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
+logger.setLevel(logging.WARNING)  # Только предупреждения и ошибки
 
 
 class APIError(Exception):
