@@ -4,14 +4,13 @@ on:
   push:
     branches:
       - main
-      - gh-pages
     paths:
       - 'docs/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:  # Позволяет запускать вручную
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -21,10 +20,10 @@ concurrency:
 
 jobs:
   deploy:
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
