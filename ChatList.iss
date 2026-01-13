@@ -6,7 +6,6 @@
 #define AppURL "https://github.com/VladimirBaliev/ChatList"
 #define AppExeName "ChatList-v1.0.0.exe"
 #define AppVersion "1.0.0"
-#define AppVersion "1.0.0"
 
 [Setup]
 ; Основные настройки
@@ -63,27 +62,100 @@ Type: dirifempty; Name: "{app}"
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   UserDataPath: String;
+  LogFilePath: String;
+  TempPath: String;
+  ResultCode: Integer;
 begin
   case CurUninstallStep of
     usUninstall:
       begin
-        // Можно добавить дополнительные действия перед удалением
-        // Например, сохранение пользовательских данных
+        // Действия перед удалением файлов
+        // Закрываем приложение, если оно запущено
+        if Exec('taskkill', '/F /IM {#AppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+        begin
+          // Приложение было закрыто
+        end;
       end;
     usPostUninstall:
       begin
-        // Действия после удаления
-        // Удаление пользовательских данных (опционально)
+        // Действия после удаления файлов программы
+        
+        // Удаление пользовательских данных (база данных, настройки, логи)
         UserDataPath := ExpandConstant('{userappdata}\{#AppName}');
         if DirExists(UserDataPath) then
         begin
-          if MsgBox('Удалить пользовательские данные (база данных, настройки)?', 
+          if MsgBox('Удалить пользовательские данные?' + #13#10 + 
+                    '(база данных, настройки, логи будут удалены)', 
                     mbConfirmation, MB_YESNO) = IDYES then
           begin
-            DelTree(UserDataPath, True, True, True);
+            // Удаляем пользовательские данные
+            if DelTree(UserDataPath, True, True, True) then
+            begin
+              // Успешно удалено
+            end;
           end;
         end;
+        
+        // Удаление лог файла из временной директории (если есть)
+        LogFilePath := ExpandConstant('{localappdata}\Temp\chatlist.log');
+        if FileExists(LogFilePath) then
+        begin
+          DeleteFile(LogFilePath);
+        end;
+        
+        // Удаление лог файла из директории приложения (если остался)
+        LogFilePath := ExpandConstant('{app}\chatlist.log');
+        if FileExists(LogFilePath) then
+        begin
+          DeleteFile(LogFilePath);
+        end;
+        
+        // Удаление временных файлов (если есть)
+        TempPath := ExpandConstant('{tmp}\{#AppName}');
+        if DirExists(TempPath) then
+        begin
+          DelTree(TempPath, True, True, True);
+        end;
+        
+        // Удаление пустых директорий
+        if DirExists(ExpandConstant('{app}')) then
+        begin
+          RemoveDir(ExpandConstant('{app}'));
+        end;
       end;
+  end;
+end;
+
+// Функция для проверки, запущено ли приложение
+function InitializeUninstall(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := True;
+  
+  // Проверяем, запущено ли приложение
+  if Exec('tasklist', '/FI "IMAGENAME eq {#AppExeName}" /FO CSV', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    if ResultCode = 0 then
+    begin
+      // Приложение запущено, предлагаем закрыть
+      if MsgBox('Приложение {#AppName} запущено.' + #13#10 + 
+                'Необходимо закрыть его перед удалением.' + #13#10#13#10 +
+                'Закрыть приложение сейчас?', 
+                mbConfirmation, MB_YESNO) = IDYES then
+      begin
+        // Закрываем приложение
+        Exec('taskkill', '/F /IM {#AppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+        Sleep(1000); // Даём время на закрытие
+      end
+      else
+      begin
+        // Пользователь отказался закрывать приложение
+        MsgBox('Удаление отменено. Закройте приложение вручную и попробуйте снова.', 
+               mbError, MB_OK);
+        Result := False;
+      end;
+    end;
   end;
 end;
 

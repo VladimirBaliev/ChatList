@@ -56,10 +56,8 @@ def write_log(message):
             except:
                 pass
     except Exception as e:
-        # Если не удалось записать в файл, выводим в stderr
-        print(f"Не удалось записать в лог: {e}", file=sys.stderr)
-        print(f"Сообщение: {message}", file=sys.stderr)
-        print(f"Путь к лог файлу: {log_file}", file=sys.stderr)
+        # Если не удалось записать в файл, просто игнорируем
+        pass
 
 def log_error(message, exc_info=None):
     """Записывает ошибку в лог файл."""
@@ -75,7 +73,7 @@ def log_error(message, exc_info=None):
                     pass
         except:
             pass
-    traceback.print_exc()
+    # traceback.print_exc() убран - ошибки только в лог файл
 
 # Инициализируем лог файл СРАЗУ
 try:
@@ -93,8 +91,7 @@ try:
             pass
     write_log("Лог файл инициализирован")
 except Exception as e:
-    # Выводим в stderr и пытаемся создать в другом месте
-    print(f"Не удалось создать лог файл в {log_file}: {e}", file=sys.stderr)
+    # Пытаемся создать в другом месте
     try:
         import tempfile
         log_file = os.path.join(tempfile.gettempdir(), 'chatlist.log')
@@ -103,23 +100,18 @@ except Exception as e:
             f.write(f"Оригинальный путь не доступен\n")
             f.write(f"Python версия: {sys.version}\n")
             f.flush()
-        print(f"Лог файл создан в: {log_file}", file=sys.stderr)
     except:
-        print("Не удалось создать лог файл ни в одном месте!", file=sys.stderr)
+        pass
 
 # Устанавливаем рабочую директорию на директорию скрипта
-write_log("Настройка путей...")
+# Настройка путей (без отладочного вывода)
 if getattr(sys, 'frozen', False):
     # Если программа запущена как exe
     application_path = os.path.dirname(sys.executable)
-    write_log(f"Режим exe, путь: {application_path}")
     # В режиме onedir DLL находятся в _internal/PyQt5/Qt5/bin
     # Также пробуем корень _internal, куда мы копируем DLL
     qt_bin_path = os.path.join(application_path, '_internal', 'PyQt5', 'Qt5', 'bin')
     qt_internal_path = os.path.join(application_path, '_internal')
-    
-    write_log(f"Путь к DLL Qt (bin): {qt_bin_path}, существует: {os.path.exists(qt_bin_path)}")
-    write_log(f"Путь к _internal: {qt_internal_path}, существует: {os.path.exists(qt_internal_path)}")
     
     # Добавляем оба пути в PATH
     paths_to_add = []
@@ -131,27 +123,6 @@ if getattr(sys, 'frozen', False):
     if paths_to_add:
         new_path = os.pathsep.join(paths_to_add) + os.pathsep + os.environ.get('PATH', '')
         os.environ['PATH'] = new_path
-        write_log(f"PATH обновлен, добавлены пути: {paths_to_add}")
-        
-        # Проверяем наличие основных DLL Qt
-        import glob
-        for path in paths_to_add:
-            qt_core_dll = os.path.join(path, 'Qt5Core.dll')
-            if os.path.exists(qt_core_dll):
-                write_log(f"Найден Qt5Core.dll в: {qt_core_dll}")
-                # Проверяем размер файла
-                try:
-                    size = os.path.getsize(qt_core_dll)
-                    write_log(f"Размер Qt5Core.dll: {size} байт")
-                except:
-                    pass
-            else:
-                write_log(f"Qt5Core.dll НЕ найден в: {path}")
-                # Ищем все DLL Qt в этой папке
-                qt_dlls = glob.glob(os.path.join(path, 'Qt5*.dll'))
-                write_log(f"Найдено DLL Qt в {path}: {len(qt_dlls)} файлов")
-                if qt_dlls:
-                    write_log(f"Примеры: {[os.path.basename(d) for d in qt_dlls[:5]]}")
         
         # Также добавляем через AddDllDirectory для Windows
         if sys.platform == 'win32':
@@ -165,33 +136,24 @@ if getattr(sys, 'frozen', False):
                 AddDllDirectory.restype = wintypes.HANDLE
                 
                 for path in paths_to_add:
-                    handle = AddDllDirectory(path)
-                    if handle:
-                        write_log(f"AddDllDirectory успешно для {path}, handle: {handle}")
-                    else:
-                        error = ctypes.get_last_error()
-                        write_log(f"AddDllDirectory вернул NULL для {path}, ошибка: {error}")
-            except Exception as e:
-                write_log(f"Ошибка AddDllDirectory: {e}")
+                    AddDllDirectory(path)
+            except Exception:
                 # Пробуем альтернативный способ
                 try:
                     import ctypes
                     kernel32 = ctypes.windll.kernel32
                     for path in paths_to_add:
-                        result = kernel32.AddDllDirectoryW(path)
-                        write_log(f"AddDllDirectoryW (альтернативный способ) для {path}, результат: {result}")
-                except Exception as e2:
-                    write_log(f"Альтернативный способ тоже не сработал: {e2}")
+                        kernel32.AddDllDirectoryW(path)
+                except Exception:
+                    pass
 else:
     # Если программа запущена как скрипт
     application_path = os.path.dirname(os.path.abspath(__file__))
-    write_log(f"Режим скрипт, путь: {application_path}")
 
 try:
     os.chdir(application_path)
-    write_log(f"Рабочая директория установлена: {os.getcwd()}")
-except Exception as e:
-    write_log(f"Ошибка установки рабочей директории: {e}")
+except Exception:
+    pass
 
 # Настраиваем путь к плагинам Qt для PyQt5
 try:
@@ -203,7 +165,6 @@ try:
 except:
     pass
 
-write_log("Попытка импорта PyQt5...")
 try:
     from PyQt5.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -214,7 +175,6 @@ try:
     from PyQt5.QtCore import Qt, QThread, pyqtSignal
     from PyQt5.QtGui import QIcon
     PYQT_VERSION = 5
-    write_log("PyQt5 успешно импортирован")
 except ImportError as e:
     log_error(f"Ошибка импорта PyQt5: {e}", exc_info=True)
     raise
@@ -1272,8 +1232,8 @@ def main():
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(main_log_file, encoding='utf-8'),
-            logging.StreamHandler(sys.stderr)
+            logging.FileHandler(main_log_file, encoding='utf-8')
+            # Убран StreamHandler - логи только в файл, не в консоль
         ]
     )
     logger = logging.getLogger(__name__)
@@ -1306,7 +1266,6 @@ def main():
     except Exception as e:
         error_msg = f"Критическая ошибка при запуске: {str(e)}\n{traceback.format_exc()}"
         logger.error(error_msg)
-        print(error_msg, file=sys.stderr)
         
         # Показываем сообщение об ошибке, если возможно
         try:
@@ -1327,18 +1286,18 @@ if __name__ == "__main__":
         try:
             log_error(f"Необработанное исключение в main(): {e}", exc_info=True)
         except:
-            # Если даже логирование не работает, выводим в stderr
-            traceback.print_exc(file=sys.stderr)
+            pass
         
-        print(f"\nКРИТИЧЕСКАЯ ОШИБКА: {e}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
-        print(f"\nЛог файл: {log_file}", file=sys.stderr)
-        print("\nНажмите Enter для закрытия окна...", file=sys.stderr)
+        # Пытаемся показать сообщение об ошибке через GUI
         try:
-            input()
+            from PyQt5.QtWidgets import QApplication, QMessageBox
+            app = QApplication.instance()
+            if app is None:
+                app = QApplication(sys.argv)
+            QMessageBox.critical(None, "Критическая ошибка", 
+                                f"Произошла критическая ошибка:\n{str(e)}\n\n"
+                                f"Подробности в лог файле: {log_file}")
         except:
-            try:
-                time.sleep(30)
-            except:
-                pass
+            pass
+        
         sys.exit(1)
