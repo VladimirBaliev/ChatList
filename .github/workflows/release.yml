@@ -1,0 +1,68 @@
+name: Build and Release
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+        
+    - name: Get version from version.py
+      id: get_version
+      run: |
+        $version = (Get-Content version.py | Select-String '__version__ = "(.*)"').Matches.Groups[1].Value
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+        echo "Version: $version"
+        
+    - name: Build application
+      run: |
+        python -m PyInstaller MinimalApp.spec
+        
+    - name: Create ZIP archive
+      run: |
+        $version = "${{ steps.get_version.outputs.version }}"
+        $zipName = "ChatList-v$version.zip"
+        Compress-Archive -Path "dist\ChatList-v$version\*" -DestinationPath $zipName -Force
+        echo "Created: $zipName"
+        
+    - name: Upload release assets
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          ChatList-v*.zip
+          dist/ChatList-v*/ChatList-v*.exe
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ChatList-Windows-${{ steps.get_version.outputs.version }}
+        path: |
+          ChatList-v*.zip
+          dist/ChatList-v*/ChatList-v*.exe
